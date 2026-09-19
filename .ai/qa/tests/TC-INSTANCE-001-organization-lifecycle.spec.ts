@@ -58,10 +58,10 @@ test.describe('TC-INSTANCE-001 organization lifecycle', () => {
       token,
       data: { name: initialName },
     });
-    expect(created.status(), 'POST /organizations must create with 201').toBe(201);
 
     const createdBody = (await created.json()) as CreateResponse;
     organizationId = createdBody.id;
+    expect(created.status(), 'POST /organizations must create with 201').toBe(201);
     expect(typeof organizationId, 'created organization must expose a string id').toBe('string');
 
     let listed = await fetchManaged(request, organizationId);
