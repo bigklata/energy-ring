@@ -179,8 +179,8 @@ W tej analizie nie uruchamiano tych skills wykonawczych.
 
 ### Review i integracja
 
-WIP: najwyżej jedno aktywne zadanie implementacyjne na osobę. Review rotacyjne A → B,
-B → C, C → A. Reviewer nie równolegli autofixu z autorem na tym samym branchu.
+WIP: najwyżej jedno aktywne zadanie implementacyjne na osobę. Review rotacyjne Dominik → Grzegorz,
+Grzegorz → Marek, Marek → Dominik. Reviewer nie równolegli autofixu z autorem na tym samym branchu.
 Approval człowieka z innego konta jest oddzielny od samooceny agenta.
 
 Koordynator scala PR-y kolejno i chroni wspólne pliki. Co około 2 godziny krótki pokaz
@@ -246,14 +246,22 @@ frameworka; dodatkowe granice i zdarzenia zwiększają koszt integracji.
 
 | Osoba / sandbox | Odpowiedzialność | Wyłączna powierzchnia pracy po ustaleniu kontraktów |
 | --- | --- | --- |
-| A / `8afc4f45…` | Import, dane i koordynacja | `data/`, `migrations/`, adapter PSE, API importu; wspólne pliki tylko przez A |
-| B / `0d04cacd…` | Jakość, obliczenia i testy | Biblioteki jakości/baseline/MAE oraz uzgodnione API obliczeń |
-| C / `747c69d5…` | Widoki i scenariusz odbioru | `backend/`, komponenty, tłumaczenia i testy UI |
+| Dominik / `8afc4f45…` | Import, dane i koordynacja | `data/`, `migrations/`, adapter PSE, API importu; koordynacja wspólnych plików |
+| Grzegorz / `0d04cacd…` | Szkielet i CI (#4), wsparcie integracji | Minimalny scaffold i CI przed pracą domenową; później testy integracyjne w uzgodnionych plikach |
+| Marek / `747c69d5…` | Analityka (#7), następnie widoki (#8) | Biblioteki jakości/baseline/MAE i API obliczeń; następnie `backend/`, komponenty, tłumaczenia i testy UI |
 
 Wspólne `src/modules.ts`, `package.json`, lockfile, `acl.ts`, `setup.ts`, rejestracje
-i kontrakty mają jednego właściciela A. Gdy potrzeba zmiany kontraktu, autor najpierw
-uzgadnia ją z pozostałymi, a A scala zmianę przed dependent task. C może pracować na
-uzgodnionym fixture w tej samej fazie, ale faza kończy się dopiero na prawdziwym API.
+i kontrakty koordynuje Dominik. Grzegorz zmienia wspólne pliki w ramach #4 przed
+startem prac domenowych, po uzgodnieniu z Dominikiem. Zmiany kontraktu uzgadnia się
+z pozostałymi i scala przed zadaniem zależnym. Marek realizuje #7, potem #8;
+UI może zacząć od uzgodnionego fixture, ale odbiór wymaga prawdziwego API.
+
+Przydział zatwierdzony przez użytkownika: Dominik (wcześniej A), Grzegorz (B),
+Marek (C); #7 przeniesione do Marka ze względu na wiedzę domenową. #8 pozostaje
+u Marka, więc analityka i UI nie są już dwiema równoległymi ścieżkami. W limicie
+20 h priorytetem jest minimalny baseline i jeden widok; ewentualne przekazanie UI
+wymaga uzgodnienia. Etykiety `worker:dominik`, `worker:grzegorz`, `worker:marek`,
+filtry automatyzacji i prompt startowy: [team-workflow.md](team-workflow.md#automatyczny-przydział-przez-etykiety-github).
 
 Nie współdzielić bazy developerskiej między sandboxami. W jednym sandboxie również
 rozróżnić bazę aplikacji od bazy testów; nie uruchamiać migracji/reinstalacji trzech
@@ -268,12 +276,12 @@ Jeśli limit oznacza 20 roboczogodzin łącznie, obowiązuje wariant w następne
 
 | Okno od startu | Wynik i podział pracy | Bramka wyjścia |
 | --- | --- | --- |
-| 0–1 h | Wspólnie #2–#3: wybór jednej wizji, kontrakty, ownerzy; A koordynuje | Zatwierdzony zakres i gotowe małe zadania |
-| 1–3 h | A: uruchomienie i minimalny moduł/CI; B: walidacja próbki i fixture; C: sprawdzenie istniejącego UI, smoke hosta | Host działa; kontrakt zintegrowany; znany wynik pełnego gate; sandboxy na tej samej podstawie |
-| 3–7 h | Przyrost 1: A import i zapis; B jakość; C tabela partii i błędów | W UI widać zapisany poprawny import oraz odrzuconą niepełną partię |
-| 7–11 h | Przyrost 2: A dostęp do zapisanych partii; B baseline i MAE; C ekran porównania | Jeden kompletny przebieg: import → kontrola → wynik → ocena |
+| 0–1 h | Wspólnie #2–#3: wybór jednej wizji, kontrakty, ownerzy; Dominik koordynuje | Zatwierdzony zakres i gotowe małe zadania |
+| 1–3 h | Grzegorz: minimalny moduł/CI; Dominik: próbka PSE i kontrakt; Marek: #10 oraz przygotowanie odbioru analityki | Host działa; kontrakt zintegrowany; znany wynik pełnego gate; sandboxy na tej samej podstawie |
+| 3–7 h | Dominik: import i zapis; Marek: jakość, baseline i MAE (#7); Grzegorz: wsparcie testów integracyjnych bez edycji plików Marka | Import i obliczenia sprawdzone na uzgodnionej próbce; #7 gotowe przed startem #8 |
+| 7–11 h | Dominik: dostęp do zapisanych partii; Marek: jeden widok danych, jakości i porównania (#8); Grzegorz: testy integracji i review | Jeden kompletny przebieg: import → kontrola → wynik → ocena |
 | 11–14 h | Replay i przypadki graniczne; opcjonalny dodatek tylko gdy rdzeń zielony | Powtarzalne demo, sensowne komunikaty błędów, dowody testów |
-| 14–17 h | Zamrożenie funkcji, poprawki i integracja; A głównie review/merge | Zintegrowany `main`, wszystkie obowiązkowe testy i gate zielone |
+| 14–17 h | Zamrożenie funkcji, poprawki i integracja; Dominik głównie review/merge | Zintegrowany `main`, wszystkie obowiązkowe testy i gate zielone |
 | 17–19 h | Końcowe QA, próba na docelowym sandboxie, instrukcja uruchomienia | Demo działa z nowej sesji; rozróżnione live/replay; znane ograniczenia |
 | 19–20 h | Rezerwa demonstracji i awarii | Brak nowych funkcji; gotowy punkt odtworzenia |
 
@@ -285,7 +293,7 @@ odłożeniem całego testowania na koniec. Estymata jest propozycją, nie pomiar
 
 - Po 3 h host nie działa lub gate jest czerwony: wstrzymać dodatki i usunąć blokadę;
   nie udawać, że baza jest gotowa, oraz nie ukrywać błędów walidacji.
-- Po 7 h import nie dociera do UI: zamrozić dodatkowe serie, scheduler i SSE.
+- Po 7 h import i obliczenia nie są gotowe do podłączenia UI: zamrozić dodatkowe serie, scheduler i SSE.
 - Po 11 h brak pełnego przepływu: utrzymać jeden baseline, tabelę i jawny replay;
   drugi baseline oraz korektę przenieść do backlogu.
 - Po 14 h bez nowych funkcji. Po 17 h tylko poprawki blokujące demonstrację.
@@ -296,7 +304,7 @@ odłożeniem całego testowania na koniec. Estymata jest propozycją, nie pomiar
 
 | Praca | Budżet zespołu |
 | --- | ---: |
-| Zakres i kontrakt; A przygotowuje, B/C krótko zatwierdzają | 1,5 h |
+| Zakres i kontrakt; Dominik przygotowuje, Grzegorz i Marek krótko zatwierdzają | 1,5 h |
 | Uruchomienie istniejącego hosta i modułu | 2,5 h |
 | Jeden import PSE, zapis i minimalna jakość | 4 h |
 | Jeden baseline i MAE | 3 h |
@@ -349,7 +357,7 @@ oddzielną zmianą konfiguracji. Nie deklarować PASS dla nieuruchomionych polec
 | [#4](https://github.com/bigklata/energy-ring/issues/4) | Nie tworzyć ponownie hosta; dodać minimalny moduł energetyczny i rzeczywiste CI |
 | [#5](https://github.com/bigklata/energy-ring/issues/5) | Potwierdzić uruchomienie tej samej podstawy w trzech sandboxach, a nie tylko obecność plików |
 | [#6](https://github.com/bigklata/energy-ring/issues/6) | Ograniczyć do jednej serii, małej historii, paginacji, idempotencji i jakości |
-| [#7](https://github.com/bigklata/energy-ring/issues/7) | Baseline i MAE; nazwać replay zgodnie z dostępnością wersji historycznych |
+| [#7](https://github.com/bigklata/energy-ring/issues/7) | Właściciel: Marek (`worker:marek`). Baseline i MAE; nazwać replay zgodnie z dostępnością wersji historycznych |
 | [#8](https://github.com/bigklata/energy-ring/issues/8) | Jeden główny przepływ danych/jakości/porównania; usunąć alternatywne wizje UI po decyzji #2 |
 | [#9](https://github.com/bigklata/energy-ring/issues/9) | Project opcjonalny na start; nie blokuje #6–#8 |
 | [#10](https://github.com/bigklata/energy-ring/issues/10) | CODEOWNERS i ochrona main; wymagany check dopiero po jego rzeczywistym uruchomieniu |

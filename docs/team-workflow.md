@@ -14,13 +14,93 @@ GitHub Issues i Project są wspólnym źródłem informacji o zadaniach, właśc
 i postępie. Cezar wykonuje zadania agentów w osobnych Git worktrees. Każde zadanie
 ma własny branch i pull request do `main`.
 
-Proponowane przypisanie; konkretne osoby trzeba jeszcze wskazać:
+Przypisanie osób zatwierdzone przez zespół (loginy GitHub wymagają uzupełnienia):
 
 | Osoba | Sandbox | Obszar |
 | --- | --- | --- |
-| A | [8afc4f45](https://app-v2.openmercatocloud.com/sandboxes/8afc4f45-40db-4875-8a85-a30ff0b306c3) | Dane, integracje i import |
-| B | [0d04cacd](https://app-v2.openmercatocloud.com/sandboxes/0d04cacd-2602-4917-9868-c303281df8c5) | Analizy i backtest |
-| C | [747c69d5](https://app-v2.openmercatocloud.com/sandboxes/747c69d5-fc44-4d25-9fc8-68f3015b676c) | UI i scenariusze użytkownika |
+| Dominik | [8afc4f45](https://app-v2.openmercatocloud.com/sandboxes/8afc4f45-40db-4875-8a85-a30ff0b306c3) | Dane, integracje i koordynacja |
+| Grzegorz | [0d04cacd](https://app-v2.openmercatocloud.com/sandboxes/0d04cacd-2602-4917-9868-c303281df8c5) | Szkielet, CI i wsparcie integracji |
+| Marek | [747c69d5](https://app-v2.openmercatocloud.com/sandboxes/747c69d5-fc44-4d25-9fc8-68f3015b676c) | Analityka (#7), następnie UI i scenariusze użytkownika |
+
+## Automatyczny przydział przez etykiety GitHub
+
+Poniższe etykiety i automatyzacje są instrukcją wdrożenia, nie potwierdzeniem ich
+utworzenia w GitHub lub sandboxach. Imiona nie zastępują loginów `Assignee`.
+
+| Właściciel | Etykieta wykonawcy | Kolejka Issues |
+| --- | --- | --- |
+| Dominik | `worker:dominik` | #2, #3, #5 (integracja), #6 |
+| Grzegorz | `worker:grzegorz` | #4 |
+| Marek | `worker:marek` | #10, #9 (opcjonalne), #7, #8 |
+
+Issue #7 należy do Marka ze względu na jego wiedzę domenową. #8 pozostaje u Marka;
+#7 i #8 wykonuje kolejno, bez dwóch równoległych implementacji. Przy limicie 20 h
+#9 nie może opóźnić analityki. Ewentualne przekazanie #8 wymaga osobnego uzgodnienia.
+
+Każde Issue ma dokładnie jedną etykietę `worker:*`. Nowa etykieta `ready` oznacza
+zatwierdzony zakres i spełnione zależności; `blocked` oraz `in-progress` wykluczają
+uruchomienie. Tagi projektu w Cezarze grupują widok, nie kierują pracą. Samo
+`labels.enabled: true` w `.ai/agentic.config.json` nie uruchamia automatyzacji.
+
+W każdym sandboxie utworzyć jedną automatyzację z poniższymi ustawieniami:
+
+| Pole | Wartość |
+| --- | --- |
+| `kind` | `github` |
+| `events` | `["issue.labeled"]` |
+| `intervalSeconds` | `60` |
+| `filters.changedLabels` | `["ready"]` |
+| `filters.allLabels` | Własna etykieta `worker:*` oraz `ready` |
+| `filters.excludeLabels` | `blocked`, `in-progress` i obie cudze etykiety `worker:*` |
+| `task.worktree` | `true` |
+| `task.autonomous` | `true` |
+| `task.variants` | `1` |
+
+Prompt do **New task**, z wyborem `create-cezar-automation`, jeśli dostępny.
+Dominik używa poniższej pierwszej linii; Grzegorz zamienia ją na
+`Mój identyfikator: worker:grzegorz`, Marek na `Mój identyfikator: worker:marek`.
+
+```text
+Mój identyfikator: worker:dominik
+
+Przygotuj automatyzację dla bigklata/energy-ring zgodnie z sekcją
+„Automatyczny przydział przez etykiety GitHub” w docs/team-workflow.md.
+Sprawdź wersję Cezara i schema; użyj mojego worker w allLabels,
+a dwóch pozostałych w excludeLabels. Nie twórz drugiej automatyzacji,
+jeżeli istnieje już równoważna definicja dla mojego workera.
+
+Instrukcja dla zadania wyzwalanego przez Issue:
+- Przeczytaj AGENTS.md, .ai/agentic.config.json i wskazane Issue.
+- Ponownie sprawdź właściciela, ready, blokady, zależności, claim i PR.
+  Pomiń zadanie zajęte, zablokowane lub należące do innego workera.
+  Istniejący PR zgłoś zamiast tworzyć konkurencyjną implementację.
+- Zastosuj repozytoryjny protokół claim; komentarz identyfikuje
+  workera, sandbox i run. Dodaj in-progress i usuń ready.
+- Wykonaj wyłącznie zatwierdzony zakres przez zainstalowany
+  om-auto-create-pr i lokalne overrides w worktree tego zadania.
+- Wykonaj wymagane kontrole. PR powiąż przez Fixes #numer.
+  Przestrzegaj zgód wymaganych przez AGENTS.md, w tym przed push.
+- Po publikacji przekaż PR do review i zwolnij claim zgodnie
+  z protokołem. Nie przywracaj ready i nie wykonuj merge.
+- Przy blokadzie zapisz przyczynę w Issue i ustaw blocked.
+
+Utwórz definicję paused, wykonaj cez automation check i pokaż podgląd
+oraz link do włączenia. Jeśli brakuje obsługi, wskaż konkretny brak.
+```
+
+Po podglądzie operator włącza automatyzację w **Automations**. Cezar musi działać.
+Dopiero potem dodać `ready` do gotowego Issue; istniejący backlog nie musi zostać
+uruchomiony po samym włączeniu. Przed dodaniem `ready` usunąć rozstrzygnięte `blocked`.
+Utrzymywać najwyżej jedno aktywne zadanie implementacyjne na osobę; następne Issue
+otrzymuje `ready` po zwolnieniu jej bieżącego zadania. Filtry nie są globalnym lockiem
+między sandboxami, dlatego jednej etykiety workera nie obsługują dwa automaty.
+
+W odczycie GitHub z 2026-09-19 #2–#8 miały `blocked`; nie odblokowywać ich masowo.
+Tryb Autonomous nie znosi wymogu potwierdzenia push. Definicje automatyzacji trzeba
+utworzyć w każdym sandboxie; sam commit tej instrukcji ich nie instaluje.
+
+Źródła: [referencja Cezara](https://github.com/open-mercato/cezar/blob/main/docs/reference.md),
+[schema automatyzacji](https://github.com/open-mercato/cezar/blob/main/packages/cezar/src/automations/types.ts).
 
 ## Podłączenie środowisk
 
@@ -74,11 +154,11 @@ pracy w repozytorium.
 
 ## Cykl pojedynczego zadania
 
-1. Przypisać Issue do jednej osoby i ustawić `In progress`.
+1. Przypisać Issue do jednej osoby i jej `worker:*`; po spełnieniu zależności dodać `ready`.
 2. Sprawdzić zależności oraz aktualność lokalnego `main`. Czysty checkout `main`
    można zaktualizować przez `git pull --ff-only`; lokalne zmiany wymagają
    wcześniejszego uporządkowania bez ich utraty.
-3. Uruchomić konkretne Issue w Cezarze, w osobnym worktree i branchu zadania.
+3. Automatyzacja uruchamia Issue w osobnym worktree i branchu; claim ustawia `in-progress`.
 4. Po pierwszych zmianach opublikować draft PR, aby zakres pracy był widoczny.
 5. W opisie PR podać zakres zmian, testy i `Closes #NUMER_ISSUE`.
 6. Po zakończeniu implementacji ustawić `Review`; druga osoba sprawdza PR.
