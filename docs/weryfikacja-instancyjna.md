@@ -20,12 +20,13 @@ powłoce zamyka ją przy pierwszym niepowodzeniu — gubisz zmienne, kod wyjści
 i krok 6 (sprzątanie). Jeśli masz je włączone: `set +eu`.
 
 > **Stan na 2026-09-19 (`main` = `c164c6f`): na `main` nie da się jeszcze
-> uzyskać zaliczającego dowodu.** W repozytorium nie ma żadnego specu aplikacji
-> `src/modules/<modul>/__integration__/*.spec.ts`, a specy pakietów z
-> `node_modules` są wykluczone, więc krok 4 kończy się `Error: No tests found`
-> i `exit=1`. To jest **brak dowodu**, nie zaliczenie. Pierwszy spec aplikacji
-> (`src/modules/rdn_forecast/__integration__/TC-RDN-001-contract-skeleton.spec.ts`)
-> wnosi PR #52 — pełny dowód jest możliwy na jego gałęzi albo po jego scaleniu.
+> uzyskać zaliczającego dowodu.** Specy pakietów z `node_modules` są
+> wykluczone, więc na `main` krok 4 kończy się `Error: No tests found` i
+> `exit=1`. To jest **brak dowodu**, nie zaliczenie. Dowód jest możliwy na
+> gałęzi, która wnosi co najmniej jeden spec — w jednej z dwóch lokalizacji
+> (patrz krok 4): natywnych speców dymnych
+> `.ai/qa/tests/TC-INSTANCE-*.spec.ts` (PR #50, ten branch) albo speców modułów
+> `src/modules/<modul>/__integration__/*.spec.ts` (np. `TC-RDN-001-…` z PR #52).
 
 ## 0. Wymagania wstępne (jednorazowo na sandboxie)
 
@@ -175,9 +176,13 @@ export INT_EXIT=$?; echo "test:integration:ephemeral exit=$INT_EXIT"
 - Runner sam stawia Postgresa w kontenerze, stosuje migracje, buduje i startuje
   aplikację (z `--no-reuse-env` na losowym wolnym porcie, np. `127.0.0.1:58068`),
   a na końcu sprząta kontener.
-- Uruchamiane są wyłącznie specyfikacje aplikacji:
-  `src/modules/<modul>/__integration__/*.spec.ts`. Specyfikacje pakietów z
-  `node_modules/@open-mercato/**` są wykluczone w `.ai/qa/tests/playwright.config.ts`.
+- Uruchamiane są wyłącznie specyfikacje aplikacji w **dwóch** lokalizacjach,
+  które `discoverIntegrationSpecFiles` w `.ai/qa/tests/playwright.config.ts`
+  wyszukuje w pierwszej kolejności:
+  - `.ai/qa/tests/*.spec.ts` — natywne specy dymne instancji
+    (np. `TC-INSTANCE-001-organization-lifecycle.spec.ts`);
+  - `src/modules/<modul>/__integration__/*.spec.ts` — specy modułów.
+  Specyfikacje pakietów z `node_modules/@open-mercato/**` są wykluczone.
 
 Test musi być samowystarczalny: tworzy własne dane w setupie (unikalne
 identyfikatory z sufiksem czasu), weryfikuje efekt **przez API**, sprząta w
@@ -272,7 +277,7 @@ nie usuwaj — runbook sprząta tylko to, co sam utworzył.
 
 | objaw | przyczyna | co zrobić |
 | --- | --- | --- |
-| `Error: No tests found` i `exit=1` | w `src/modules/*/__integration__/` nie ma żadnego specu; specy pakietów są wykluczone | To **nie** jest dowód. Dodaj w swoim zadaniu spec `src/modules/<modul>/__integration__/TC-…spec.ts` weryfikujący efekt przez API. Jeśli Issue na to nie pozwala — napisz komentarz i podziel zadanie; nie obniżaj progu. |
+| `Error: No tests found` i `exit=1` | w `.ai/qa/tests/*.spec.ts` i `src/modules/*/__integration__/` nie ma żadnego specu; specy pakietów są wykluczone | To **nie** jest dowód. Dodaj w swoim zadaniu spec — natywny `.ai/qa/tests/TC-…spec.ts` albo modułowy `src/modules/<modul>/__integration__/TC-…spec.ts` — weryfikujący efekt przez API. Jeśli Issue na to nie pozwala — napisz komentarz i podziel zadanie; nie obniżaj progu. |
 | `Refusing to run in production with an unsafe signing secret` / `Application process exited before readiness check` | krok 4 uruchomiony bez prefiksu z sekretami albo w `.env` jest słaby `JWT_<X>_SECRET` (np. `JWT_STAFF_SECRET`) | Powtórz krok 4 dokładnie z bloku. Dla zgłoszonego `JWT_<X>_SECRET` dopisz do prefiksu `JWT_<X>_SECRET="$(openssl rand -hex 32)"`. Nie edytuj `.env`. |
 | `Node >= 24 required` przy `yarn install` | stary Node | `nvm install 24 && nvm use 24`. |
 | `Container runtime is unavailable` / `Docker CLI is not available` | brak Dockera | Uruchom Docker (na macOS np. `colima start`) i powtórz krok 4. |
