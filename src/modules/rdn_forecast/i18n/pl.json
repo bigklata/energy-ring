@@ -1,0 +1,7 @@
+{
+  "rdn_forecast.nav.group": "Energy Ring",
+  "rdn_forecast.panel.description": "Przeglądaj dane i wyniki prognozy RDN.",
+  "rdn_forecast.panel.empty.description": "Dane prognozy pojawią się tutaj po zakończeniu importu lub uruchomieniu prognozy.",
+  "rdn_forecast.panel.empty.title": "Brak danych prognozy",
+  "rdn_forecast.panel.title": "Prognoza RDN"
+}
