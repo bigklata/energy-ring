@@ -35,3 +35,39 @@ Apply this checklist in addition to the installed `om-code-review` checklist whe
 - Visible copy lives in module `i18n/<locale>.json` and is read with the installed translation helpers; `translations.ts` is reserved for translatable entity fields. Every literal module-owned UI/navigation key resolves to a non-empty base-locale value and in every sibling locale the module emits. Locale generation/sync is refreshed when keys change, and generated-code review treats emitted locale JSON as inert source evidence.
 - Pages preserve server-rendered shells and small client islands, do not pull route-specific heavy code into global providers, and cover responsive layouts, keyboard/focus behavior, labels, accessible announcements, loading, empty, error, permission-denied, validation, conflict, success, and destructive confirmation states.
 - Focused tests cover allowed/denied/wildcard ACL, two scopes, malformed input, current/stale version, custom-field save/reload/clear, injected atomic rollback, undo/retry, encrypted read/redaction, search deletion/reindex convergence, and extension-host round trips as applicable. Concurrency-sensitive commands execute two contenders and deterministic retry. Standalone Jest files import their globals from `@jest/globals` when the app `tsconfig` does not provide them, and the focused runner must discover and execute the file.
+
+## Verification gate — blocking, not advisory
+
+Every Issue in this repository carries exactly one verification label:
+`verify:unit`, `verify:instance`, `verify:e2e`, or `uat`. The label is the
+**minimum** bar, not a suggestion.
+
+**An Issue may not be closed, and its PR may not be merged, until the evidence
+required by its verification label is present in the PR.** A green `typecheck`,
+a passing review, and "works on my machine" are explicitly NOT sufficient.
+
+| label | required evidence in the PR |
+| --- | --- |
+| `verify:unit` | `yarn test` output showing the **new** test running — not merely a green no-op |
+| `verify:instance` | `yarn mercato db:migrate` on a clean database **and** `yarn test:integration:ephemeral` output |
+| `verify:e2e` | `yarn test:integration` (Playwright) output; trace or screenshot on failure |
+| `uat` | a comment on the Issue from a person who did not write the code, recording what worked and what did not |
+
+### Why this is spelled out
+
+As of 2026-09-19 the repository contained **zero test files**, so `yarn test`
+passed vacuously and CI proved nothing. A green pipeline is therefore not
+evidence on its own; the PR must show that the new test actually executed.
+
+### Escalation, not silent downgrade
+
+If a task labelled `verify:unit` turns out to need a database or a live route,
+that means the task was cut wrong. Say so in a comment and split it. Raising
+your own bar silently is acceptable; **lowering it is not** — a task never
+closes below its label.
+
+### Enforcement status
+
+`verify:instance` is enforced automatically once #41 lands; `verify:e2e` once
+#42 lands. Until then, run the commands locally and paste the output into the
+PR. The requirement is identical either way — only who checks it changes.
