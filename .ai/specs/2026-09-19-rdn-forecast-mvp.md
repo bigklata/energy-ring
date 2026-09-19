@@ -270,7 +270,7 @@ Nie zmieniono runtime API, encji ani eksportów. Historyczne wizje zachowano z i
 | Q-001 | Który produkt? | Użytkownik / #2 | resolved | Prognoza RDN, 2026-09-19 |
 | Q-002 | Jakie moduły, kontrakty, ACL i mechanizmy platformy? | #3 | yes, implementation | Doprecyzować z installed evidence; nie blokuje research #6 A |
 | Q-003 | Które prognozowane pola/wersje są dostępne przed odcięciem? | #6 A | yes, source contract | Kandydaci i odczyty poniżej; historia rewizji do potwierdzenia |
-| Q-004 | Jaki wzór, współczynniki, cutoff, mapowanie godzin/DST i okres oceny? | #7 refinement | yes, analytics implementation | Jawny, wersjonowany kontrakt bez treningu; zatwierdzić przed kodowaniem |
+| Q-004 | Jaki wzór, współczynniki, cutoff, mapowanie godzin/DST i okres oceny? | #7 refinement | partly: calibrated parameters still block real runs | Wzór, MW, cutoff i mapowanie UTC/DST zatwierdzone jako `baseline-correction.v1` 2026-09-19; współczynniki przykładowe nie są skalibrowane |
 | Q-005 | Loginy A/B/C i koordynator wspólnych plików? | Zespół / #3 | yes, assignment | Zachowano dotychczasowe role i sandboxy, bez wymyślania assignee |
 
 To prace przypisane do backlogu, nie żądanie ponownego wyboru produktu. Dokument nie otrzyma statusu Ready przed ich zamknięciem i akceptacją implementacji.
@@ -279,6 +279,7 @@ To prace przypisane do backlogu, nie żądanie ponownego wyboru produktu. Dokume
 
 | Date | Change |
 |---|---|
+| 2026-09-19 | Zatwierdzono `baseline-correction.v1`: odrębne jesienne godziny UTC, każda na cztery MTU; oficjalna dokumentacja PSE potwierdza MW dla trzech wejść `pk5l-wp`. Nadal wymagane skalibrowane parametry i dowód historii point-in-time. |
 | 2026-09-19 | Wybór użytkownika zapisany; trzy wizje zastąpione jednym zakresem; rozpisano warunki gotowości #2/#3/#6/#7/#8 |
 
 ## Source evidence — ograniczona weryfikacja 2026-09-19
@@ -293,4 +294,4 @@ W tej sesji wykonano publiczne GET `https://api.raporty.pse.pl/api/{endpoint}` z
 | 2026-09-20 | csdac-pln | 0 rekordów w chwili odczytu |
 | 2026-09-20 | pk5l-wp | 24 rekordy; co najmniej dwa czasy publikacji UTC: 2026-09-19 09:32:41.886 i 10:02:31.573 |
 
-Wniosek ograniczony: `pk5l-wp` jest konkretnym kandydatem wejścia prognozowanego dostępnym w próbce przed ceną na tę samą dobę; partia nie ma koniecznie jednego czasu publikacji. Nie sprawdzono kompletności/wartości wszystkich pól, historycznych wersji, jednostek MW w dokumentacji dostawcy, licencji, limitów API ani harmonogramu na wielu dobach. Weryfikacja należy do #6 A. Pomiary z `docs-marek/pomiary-api-pse.md` pozostają osobnym historycznym źródłem, bez przepisywania ich jako gwarancji.
+Wniosek z pierwotnego pomiaru: `pk5l-wp` jest konkretnym kandydatem wejścia prognozowanego dostępnym w próbce przed ceną na tę samą dobę; partia nie ma koniecznie jednego czasu publikacji. W tamtym pomiarze nie sprawdzono kompletności/wartości wszystkich pól, historycznych wersji, jednostek MW w dokumentacji dostawcy, licencji, limitów API ani harmonogramu na wielu dobach. Późniejsza weryfikacja jednostek i jesiennego DST jest zapisana w [katalogu PSE](../../docs/pse-source-catalog.md) i [metodzie v1](../../docs/rdn-forecast-method.md); nie ustanawia SLA dostawcy. Pomiary z `docs-marek/pomiary-api-pse.md` pozostają osobnym historycznym źródłem, bez przepisywania ich jako gwarancji.
