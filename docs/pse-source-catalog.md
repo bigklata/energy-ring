@@ -32,12 +32,23 @@ application may manufacture.
 | Endpoint | Candidate role | Observed fields | Resolution observed | What is established | What is still unknown |
 |---|---|---|---|---|---|
 | `csdac-pln` | Target RDN price and possible baseline | `dtime`, `period`, `csdac_pln`, UTC/local time fields, `business_date`, publication fields | 15 minutes; 96 rows for a complete ordinary day in the existing measurement | Price is represented in PLN/MWh; negative values occur; publication is present per row | Revision/history availability before a cutoff, exact product semantics, retained history and licensing |
-| `pk5l-wp` | Candidate forecast inputs (`grid_demand_fcst`, `fcst_wi_tot_gen`, `fcst_pv_tot_gen`) | Forecast fields, `plan_dtime`, UTC/local time fields, `business_date`, publication fields | Hourly in the observed response; 24 rows in the existing measurement | A sample for the next day was available before target prices in the earlier observation; rows can have different publication timestamps | Units and field semantics, null policy, historical point-in-time versions, reliable coverage before cutoff |
-| `kse-load` | Candidate load forecast and actual for quality/baseline research | `load_fcst`, `load_actual`, UTC/local time fields, `business_date`, publication fields | 15 minutes; 96 rows in the existing measurement | Forecast and actual are separate fields; nulls were observed in historical measurements | Whether forecast revisions are recoverable point-in-time, unit documentation, usefulness beside `pk5l-wp` |
+| `pk5l-wp` | Candidate forecast inputs (`grid_demand_fcst`, `fcst_wi_tot_gen`, `fcst_pv_tot_gen`) | Forecast fields, `plan_dtime`, UTC/local time fields, `business_date`, publication fields | Hourly; bounded ordinary/spring/autumn samples have 24/23/25 rows | A next-day sample was available before target prices; publication is per row. Official PSE report columns identify all three named fields as MW; `grid_demand_fcst` is net grid demand. | Null policy, historical point-in-time versions, reliable coverage before cutoff |
+| `kse-load` | Candidate load forecast and actual for quality/baseline research | `load_fcst`, `load_actual`, UTC/local time fields, `business_date`, publication fields | 15 minutes; bounded ordinary/spring/autumn samples have 96/92/100 rows | Forecast and actual are separate fields in MW; nulls were observed in historical measurements. This gross load differs from `pk5l-wp` net grid demand. | Whether forecast revisions are recoverable point-in-time; usefulness beside `pk5l-wp` |
 
 The resolution and row counts above are observations, not API guarantees. The
 expected number of MTU must come from the Europe/Warsaw calendar and the
 approved contract: 92, 96, or 100, not a hard-coded 96.
+
+The [PSE API field map](https://api.raporty.pse.pl/EndpointsMap.pdf) connects
+these API names to the report columns. PSE's [PK5L report
+description](https://www.pse.pl/dane-systemowe/plany-pracy-kse/plan-koordynacyjny-5-letni/wielkosci-podstawowe/opis)
+labels grid demand, total wind generation, and total PV generation `[MW]`;
+its [KSE load report](https://www.pse.pl/dane-systemowe/funkcjonowanie-kse/raporty-dobowe-z-pracy-kse/zapotrzebowanie-mocy-kse)
+labels forecast and actual load `[MW]`. A bounded public API sample for
+2025-10-26 has 25 consecutive `pk5l-wp` UTC hour ends: its two repeated
+local-hour rows carry different wind values (4125 and 4387 MW). Under the
+approved `baseline-correction.v1` rule, each UTC hour maps to its own four
+MTU; the sample is evidence of provider behavior, not a completeness SLA.
 
 ## Evidence and interpretation
 
@@ -68,12 +79,14 @@ approved contract: 92, 96, or 100, not a hard-coded 96.
 
 ## Contract handoff and bounded follow-up
 
-Issue #3 must turn this catalog into exact source, field, unit, timezone,
-revision, retention, cadence, timeout, retry, and license decisions. Issue #7
-must decide the mapping from hourly candidates to MTU, the cutoff policy, and
-the evaluation window. Until then:
+Issue #3 must turn this catalog into exact source, field, timezone, revision,
+retention, cadence, timeout, retry, and license decisions. The named MW units
+and #7's v1 hourly-to-MTU, cutoff, and evaluation policies are recorded in
+`docs/rdn-forecast-method.md`. Until the remaining decisions are resolved:
 
-- do not implement the adapter or database schema;
+- keep the existing pure row adapters separate from persistence, quality
+  acceptance, and production forecast runs until #3's contracts and schema
+  are implemented;
 - do not claim historical replay is possible for a date unless the required
   versions were available before the stored cutoff;
 - do not backfill the entire provider history or depend on live PSE responses in
