@@ -47,20 +47,26 @@ Phase 2, tracked in the readiness gate.
 |---|---|---|---|
 | PSE source catalog and adapter | `dominikczerwinski-eng` / #6 A-B | `src/modules/rdn_forecast/integrations/pse.ts`, `data-sync.ts` | Provider response becomes a scoped, versioned snapshot; no direct UI writes |
 | Source, batch, point, quality, forecast, evaluation entities | `dominikczerwinski-eng` / #3 | `src/modules/rdn_forecast/data/entities.ts`, `validators.ts` | One owner; all records carry trusted tenant and organization scope |
-| Forecast method and evaluation | `bigklata` / #7 | `src/modules/rdn_forecast/lib/forecast.ts`, `evaluation.ts` | Consumes immutable snapshots by ID; does not fetch PSE |
-| Panel and navigation | `bigklata` / #8 | `src/modules/rdn_forecast/frontend/rdn-forecast/page.tsx`, `components/` | Uses API/command contracts; no direct ORM access |
-| CI, generated registries, migration coordination | `funnydonut` / #4, with `dominikczerwinski-eng` for #5's integration seam | repository configuration and generated outputs | Changes require the shared coordinator and review |
+| Forecast method and evaluation | `worker:marek` (login `TBD`) / #7 | `src/modules/rdn_forecast/lib/forecast.ts`, `evaluation.ts` | Consumes immutable snapshots by ID; does not fetch PSE |
+| Panel and navigation | `worker:marek` (login `TBD`) / #8 | `src/modules/rdn_forecast/frontend/rdn-forecast/page.tsx`, `components/` | Uses API/command contracts; no direct ORM access |
+| CI, generated registries, migration coordination | `worker:grzegorz` (login `TBD`) / #4, with `dominikczerwinski-eng` for #5's integration seam | repository configuration and generated outputs | Changes require the shared coordinator and review |
 
 The first row records the current assignee's scope, not ownership of #7 or #8.
-Owner logins for #7/#8/#4 follow `docs/team-workflow.md`'s already-committed
-`worker:*` assignment (Dominik → #2/#3/#5-integration/#6, Grzegorz → #4, Marek
-→ #7/#8/#9/#10), resolved to GitHub logins via each PR's actual author
-(`bigklata` = Marek, `funnydonut` = Grzegorz, confirmed from PR #14/#15
-authorship — the repo's only three collaborators). This still needs a formal
-`Assignee` on each GitHub issue, which is not yet set on #3/#4/#7/#8; until
-that is done, treat these owner cells as the team's documented intent, not a
-closed decision. Until an `Assignee` is set, no shared file is edited by more
-than one owner at a time.
+`docs/team-workflow.md` names Dominik → #2/#3/#5-integration/#6, Grzegorz → #4,
+Marek → #7/#8/#9/#10 by real name, but **does not** fix a GitHub login for
+Grzegorz or Marek yet, and this document's earlier revision incorrectly
+guessed `bigklata` = Marek and `funnydonut` = Grzegorz from PR authorship. That
+guess does not hold: `bigklata` has both authored PR #17 (issue #4, Grzegorz's
+queue) and run the automated `om-auto-review-pr` reviewer on PRs #11-#13
+(Dominik's queue), and `funnydonut` posted on issue #10, which carries no
+`worker:*` label — so PR/comment authorship on this repo's three collaborator
+accounts (`bigklata`, `funnydonut`, `dominikczerwinski-eng`) does not reliably
+identify which is Grzegorz and which is Marek. Only `dominikczerwinski-eng` is
+confirmed, from its consistent use across every `worker:dominik` issue (#2,
+#3, #5, #6) and no other issue. The #7/#8/#4 login cells stay `TBD` until a
+human sets the `Assignee` field on those issues directly; this document must
+not repeat the guess. Until an `Assignee` is set, no shared file is edited by
+more than one owner at a time.
 
 Cross-module relations are IDs, snapshots, or events only. There are no ORM
 relations to another module. All entities belong under
@@ -308,12 +314,15 @@ publication it must follow `.ai/guides/upstream/BACKWARD_COMPATIBILITY.md`.
    requested change there must be reflected back into this contract. Its own
    open items (calibrated `paramsVersion`, per-DST-rule fixtures) carry
    forward to Phase 2 here, not to #3's closure.
-3. **Team — owners identified, not yet formally assigned:** this document now
-   names `bigklata` (#7/#8) and `funnydonut` (#4, with `dominikczerwinski-eng`
-   on #5's integration seam) per `docs/team-workflow.md`'s committed
-   assignment. None of #3/#4/#7/#8 has a GitHub `Assignee` set yet — that is a
-   one-line action on each issue, not a design decision, but it is still
-   outstanding.
+3. **Team — real names known, GitHub logins not confirmed:** `docs/team-workflow.md`
+   names Grzegorz → #4 and Marek → #7/#8 by real name, and this contract
+   correctly gives `dominikczerwinski-eng` for #5's integration seam. It does
+   not yet name a GitHub login for Grzegorz or Marek — PR/comment authorship
+   on the repo's other two collaborator accounts (`bigklata`, `funnydonut`)
+   does not reliably distinguish them (see the ownership table above), so
+   those two owner cells stay `TBD` rather than guessed. Setting a GitHub
+   `Assignee` on #3/#4/#7/#8 is a one-line action once a human confirms the
+   login, but it is still outstanding.
 4. **#4/#5:** neither has a merged skeleton/CI branch on `main` yet (checked
    2026-09-19: only docs/CODEOWNERS have merged). Module activation and
    generated discovery files stay blocked on that merge regardless of this
