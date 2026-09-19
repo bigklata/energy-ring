@@ -1,6 +1,6 @@
 # Demo RDN — scenariusz replay doby historycznej
 
-**Status: scenariusz odbiorowy, obecnie niewykonalny.** W tym commicie nie ma aktywnego modułu RDN ani klienta PSE, panelu `/backend/rdn-forecast`, komendy replay czy pełnej ścieżki API. [#40/G2](https://github.com/bigklata/energy-ring/issues/40) jest zablokowane przez [#39/G1](https://github.com/bigklata/energy-ring/issues/39). Instrukcja uruchomienia istniejącego panelu hosta jest w [README](../README.md). Nie przedstawiaj poniższych kroków jako wyniku przeprowadzonego pokazu.
+**Status: scenariusz odbiorowy, obecnie niewykonalny.** Samodzielny klient PSE, jeśli jest obecny w uruchamianej wersji, nie zastępuje aktywnego modułu RDN, panelu `/backend/rdn-forecast`, komendy replay ani pełnej ścieżki API. [#40/G2](https://github.com/bigklata/energy-ring/issues/40) jest zablokowane przez [#39/G1](https://github.com/bigklata/energy-ring/issues/39). Instrukcja uruchomienia panelu hosta jest w [README](../README.md). Nie przedstawiaj poniższych kroków jako wyniku przeprowadzonego pokazu.
 
 ## Przygotowanie przed próbą demo
 
