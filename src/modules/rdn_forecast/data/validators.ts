@@ -6,8 +6,28 @@ import { z } from 'zod'
  * accepted from a payload.
  */
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
-const utcInstant = z.coerce.date()
+/** A real calendar day: the string must survive a UTC round-trip unchanged, so `2026-02-30` is rejected. */
+export const rdnIsoDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00Z`)
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+  }, 'Expected an existing calendar date')
+
+/**
+ * An unambiguous instant: a valid `Date`, or an ISO-8601 string with `Z` or an
+ * explicit offset. `null`, numbers and zone-less strings are rejected — they
+ * would otherwise be read as the epoch or in the server's time zone and falsify
+ * the point-in-time trail (`publicationTsUtc`, `fetchedAtUtc`, cutoffs).
+ */
+export const rdnUtcInstantSchema = z.union([
+  z.date(),
+  z.iso.datetime({ offset: true }).transform((value) => new Date(value)),
+])
+
+const isoDate = rdnIsoDateSchema
+const utcInstant = rdnUtcInstantSchema
 /** Decimal price as a string (PLN/MWh); negative and zero are valid, null means missing. */
 const decimal = z.string().regex(/^-?\d{1,10}(\.\d{1,4})?$/, 'Expected a decimal with up to 4 fractional digits')
 const localLabel = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:MM')
@@ -83,6 +103,8 @@ export const rdnImportBatchCreateSchema = z.object({
   sourceSeriesId: z.string().uuid(),
   deliveryDate: isoDate,
   providerRevision: z.string().min(1).max(200),
+  idempotencyKey,
+  requestFingerprint: z.string().regex(/^[0-9a-f]{64}$/, 'Expected a lowercase SHA-256 hex digest'),
   status: rdnImportBatchStatusSchema.default('received'),
   receivedAtUtc: utcInstant,
   completedAtUtc: utcInstant.nullable().optional(),
