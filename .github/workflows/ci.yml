@@ -12,7 +12,13 @@ concurrency:
 
 jobs:
   checks:
-    name: generate, typecheck, lint, ds:check, test, build
+    # This job's `name` is the check-run name that branch protection matches on.
+    # The `main` ruleset requires the context `ci`, so this string is load-bearing:
+    # renaming it silently detaches the gate and leaves every PR waiting forever
+    # for a status that will never be reported. Change it only together with the
+    # ruleset (Settings -> Rules -> Rulesets -> main -> Require status checks).
+    # The individual commands stay visible as step names below.
+    name: ci
     runs-on: ubuntu-latest
     services:
       postgres:
