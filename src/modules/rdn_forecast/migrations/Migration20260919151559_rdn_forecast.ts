@@ -15,8 +15,10 @@ export class Migration20260919151559_rdn_forecast extends Migration {
   }
 
   override down(): void | Promise<void> {
-    this.addSql(`alter table "rdn_forecast_evaluation_runs" drop constraint if exists "rdn_forecast_evaluation_runs_target_unique";`);
     this.addSql(`do $$ begin if exists (select 1 from "rdn_forecast_evaluation_runs" group by "tenant_id", "organization_id", "forecast_run_id", "target_batch_id" having count(*) > 1) then raise exception 'cannot restore rdn_forecast_evaluation_runs_target_unique without deleting evaluation history'; end if; end $$;`);
+    this.addSql(`do $$ begin if exists (select 1 from "rdn_forecast_import_batches" where "idempotency_key" <> 'legacy:' || "id"::text) then raise exception 'cannot drop rdn_forecast_import_batches idempotency keys written by the import command'; end if; end $$;`);
+
+    this.addSql(`alter table "rdn_forecast_evaluation_runs" drop constraint if exists "rdn_forecast_evaluation_runs_target_unique";`);
     this.addSql(`alter table "rdn_forecast_evaluation_runs" add constraint "rdn_forecast_evaluation_runs_target_unique" unique ("tenant_id", "organization_id", "forecast_run_id", "target_batch_id");`);
 
     this.addSql(`alter table "rdn_forecast_import_batches" drop constraint if exists "rdn_forecast_import_batches_idempotency_unique";`);
