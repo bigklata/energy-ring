@@ -29,7 +29,7 @@ const removeOwned = async (request: APIRequestContext, token: string, id: string
     data: { id },
   });
   const body = (await response.json().catch(() => ({}))) as OkResponse;
-  expect(response.status, 'leaked organization must be removed in cleanup').toBe(200);
+  expect(response.status(), 'leaked organization must be removed in cleanup').toBe(200);
   expect(body.ok, 'cleanup delete must report ok:true').toBe(true);
 };
 

@@ -29,10 +29,13 @@ test.describe('TC-INSTANCE-001 organization lifecycle', () => {
 
   const uniqueName = () => `inst-001-${Date.now()}-${crypto.randomUUID()}`;
 
-  const fetchManaged = async (request: APIRequestContext, id: string) =>
-    (await apiRequest(request, 'GET', `${ORG_PATH}?view=manage&ids=${encodeURIComponent(id)}`, {
+  const fetchManaged = async (request: APIRequestContext, id: string) => {
+    const response = await apiRequest(request, 'GET', `${ORG_PATH}?view=manage&ids=${encodeURIComponent(id)}`, {
       token,
-    })).json() as Promise<OrganizationListBody>;
+    });
+    expect(response.status(), 'fetchManaged must return 200').toBe(200);
+    return (await response.json()) as Promise<OrganizationListBody>;
+  };
 
   const removeOwned = async (request: APIRequestContext, id: string) => {
     const response = await apiRequest(request, 'DELETE', ORG_PATH, {
@@ -58,8 +61,8 @@ test.describe('TC-INSTANCE-001 organization lifecycle', () => {
     expect(created.status(), 'POST /organizations must create with 201').toBe(201);
 
     const createdBody = (await created.json()) as CreateResponse;
-    expect(typeof createdBody.id, 'created organization must expose a string id').toBe('string');
     organizationId = createdBody.id;
+    expect(typeof organizationId, 'created organization must expose a string id').toBe('string');
 
     let listed = await fetchManaged(request, organizationId);
     expect(listed.items.length, 'managed view must return exactly one row for the owned id').toBe(1);
