@@ -1,0 +1,9 @@
+# Provisional CODEOWNERS.
+#
+# Per-area/module ownership is not settled yet (blocked on #2/#3: module
+# structure and confirmed owner logins). Until that lands, every change
+# requires review from all current maintainers.
+#
+# TODO: replace this global rule with per-path owners once #3 assigns
+# module directories under src/modules/<id>/ to specific owners.
+* @bigklata @funnydonut @dominikczerwinski-eng
