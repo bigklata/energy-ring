@@ -1,0 +1,9 @@
+{
+  "fixture": "evaluation-test-fixture-replay",
+  "evaluationKind": "test_fixture_replay",
+  "verifiableDeliveryDates": 3,
+  "minimumHistoricalDates": 14,
+  "expectedCoverageStatus": "insufficient_coverage",
+  "expectedLabel": "test-fixture-replay",
+  "oracle": "fewer than 14 verifiable dates cannot be presented as historical evaluation"
+}

@@ -1,0 +1,31 @@
+{
+  "fixture": "source-batch-complete",
+  "scope": {
+    "tenantId": "tenant-a",
+    "organizationId": "org-a"
+  },
+  "sourceSeries": {
+    "id": "source-csdac-pln",
+    "provider": "pse",
+    "endpoint": "csdac-pln",
+    "seriesKey": "csdac_pln",
+    "unit": "PLN/MWh",
+    "timezone": "Europe/Warsaw"
+  },
+  "batch": {
+    "id": "batch-2026-09-21-csdac",
+    "deliveryDate": "2026-09-21",
+    "status": "accepted",
+    "expectedMtu": 96,
+    "receivedMtu": 96,
+    "acceptedMtu": 96,
+    "rejectionCodes": []
+  },
+  "scopeIsolationOracle": {
+    "sameBatchAsOtherScope": false,
+    "otherScope": {
+      "tenantId": "tenant-b",
+      "organizationId": "org-b"
+    }
+  }
+}
