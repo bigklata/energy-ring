@@ -1,6 +1,6 @@
 # Lessons
 
-This catalog indexes 1 focused lessons without loading their full text. Route the task first, then read only records whose **modules**, standalone-harness **areas**, or **topics** match the work.
+This catalog indexes 2 focused lessons without loading their full text. Route the task first, then read only records whose **modules**, standalone-harness **areas**, or **topics** match the work.
 
 ## How to use this catalog
 
@@ -25,6 +25,10 @@ rg -l '"<area>"|"<module>"|"<topic>"' .ai/lessons/*.md
 - Run `node scripts/check-lessons.mjs` before committing.
 
 ## Catalog
+
+### integration
+
+- [Use UTC intervals to identify repeated PSE hours](lessons/pse-dst-utc-intervals.md) — area:integration,spec-pr; module:rdn_forecast; topic:dst,source-contract,provider-evidence
 
 ### spec-pr
 

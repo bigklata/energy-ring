@@ -30,10 +30,10 @@ function localHour(utc: string): string {
   return parts.find((part) => part.type === 'hour')?.value ?? ''
 }
 
-function dayMtu(startUtc: string, hourCount: number) {
+function dayMtu(startUtc: string, hourCount: number, businessDate: string) {
   return Array.from({ length: hourCount }, (_, index) => {
     const end = new Date(Date.parse(startUtc) + (index + 1) * 60 * 60_000).toISOString()
-    const row = parsePk5lWpRow({ ...pkRow, plan_dtime_utc: end })
+    const row = parsePk5lWpRow({ ...pkRow, business_date: businessDate, plan_dtime_utc: end })
     return hourlyRecordToMtu(row)
   }).flat()
 }
@@ -42,6 +42,7 @@ describe('PSE input row adapters', () => {
   it('keeps kse-load forecast, actual and per-row publication distinct, including null and zero', () => {
     expect(parseKseLoadRow(kseRow)).toEqual({
       businessDate: '2026-09-21',
+      unit: 'MW',
       intervalStartUtc: '2026-09-20T22:00:00.000Z',
       intervalEndUtc: '2026-09-20T22:15:00.000Z',
       publicationTsUtc: '2026-09-20T12:01:02.003Z',
@@ -52,10 +53,11 @@ describe('PSE input row adapters', () => {
       .toMatchObject({ loadForecast: null, loadActual: 17800 })
   })
 
-  it('parses pk5l-wp hour ending in UTC without assuming a unit or filling missing values', () => {
+  it('parses a MW pk5l-wp hour ending in UTC without filling missing values', () => {
     const row = parsePk5lWpRow({ ...pkRow, fcst_wi_tot_gen: null })
     expect(row).toEqual({
       businessDate: '2026-09-21',
+      unit: 'MW',
       hourStartUtc: '2026-09-20T22:00:00.000Z',
       hourEndUtc: '2026-09-20T23:00:00.000Z',
       publicationTsUtc: '2026-09-20T10:02:31.573Z',
@@ -71,14 +73,16 @@ describe('PSE input row adapters', () => {
     ])
     expect(hourlyRecordToMtu(row).map((mtu) => mtu.windGenerationForecast))
       .toEqual([null, null, null, null])
+    expect(hourlyRecordToMtu(row).map((mtu) => mtu.unit))
+      .toEqual(['MW', 'MW', 'MW', 'MW'])
   })
 
   it.each([
-    ['ordinary', '2026-09-20T22:00:00.000Z', 24, 96],
-    ['spring transition', '2026-03-28T23:00:00.000Z', 23, 92],
-    ['autumn transition', '2026-10-24T22:00:00.000Z', 25, 100],
-  ] as const)('maps %s day to %i source hours and %i distinct MTU', (_name, start, hours, count) => {
-    const mtus = dayMtu(start, hours)
+    ['ordinary', '2026-09-20T22:00:00.000Z', '2026-09-21', 24, 96],
+    ['spring transition', '2026-03-28T23:00:00.000Z', '2026-03-29', 23, 92],
+    ['autumn transition', '2026-10-24T22:00:00.000Z', '2026-10-25', 25, 100],
+  ] as const)('maps %s day from %s UTC start (%s) through %i source hours to %i distinct MTU', (_name, start, date, hours, count) => {
+    const mtus = dayMtu(start, hours, date)
     expect(mtus).toHaveLength(count)
     expect(mtus[0].intervalStartUtc).toBe(start)
     expect(new Set(mtus.map((mtu) => mtu.intervalStartUtc)).size).toBe(count)
@@ -102,6 +106,8 @@ describe('PSE input row adapters', () => {
     expect(localHour(secondMtus[0].intervalStartUtc)).toBe('02')
     expect(first.windGenerationForecast).toBe(4125)
     expect(second.windGenerationForecast).toBe(4387)
+    expect(first.unit).toBe('MW')
+    expect(second.unit).toBe('MW')
     expect(firstMtus.map((mtu) => mtu.windGenerationForecast)).toEqual([4125, 4125, 4125, 4125])
     expect(secondMtus.map((mtu) => mtu.windGenerationForecast)).toEqual([4387, 4387, 4387, 4387])
     expect(firstMtus[3].intervalEndUtc).toBe(secondMtus[0].intervalStartUtc)
@@ -109,7 +115,7 @@ describe('PSE input row adapters', () => {
   })
 
   it('has no invented spring 02:00 MTU', () => {
-    const mtus = dayMtu('2026-03-28T23:00:00.000Z', 23)
+    const mtus = dayMtu('2026-03-28T23:00:00.000Z', 23, '2026-03-29')
     expect(mtus.map((mtu) => localHour(mtu.intervalStartUtc))).not.toContain('02')
   })
 
@@ -117,7 +123,9 @@ describe('PSE input row adapters', () => {
     expect(() => parseKseLoadRow({ ...kseRow, dtime_utc: '2026-02-30 00:15:00' })).toThrow(PseInputRowError)
     expect(() => parseKseLoadRow({ ...kseRow, dtime_utc: '2026-09-20 22:16:00' })).toThrow(PseInputRowError)
     expect(() => parseKseLoadRow({ ...kseRow, load_fcst: undefined })).toThrow(PseInputRowError)
+    expect(() => parseKseLoadRow({ ...kseRow, business_date: '2026-09-20' })).toThrow(PseInputRowError)
     expect(() => parsePk5lWpRow({ ...pkRow, grid_demand_fcst: '18500' })).toThrow(PseInputRowError)
+    expect(() => parsePk5lWpRow({ ...pkRow, business_date: '2026-09-20' })).toThrow(PseInputRowError)
     expect(() => parsePk5lWpRow({ ...pkRow, fcst_pv_tot_gen: Infinity })).toThrow(PseInputRowError)
     expect(() => parsePk5lWpRow({ ...pkRow, publication_ts_utc: null })).toThrow(PseInputRowError)
   })

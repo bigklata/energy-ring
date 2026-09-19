@@ -6,6 +6,7 @@ export type PseMtu = {
 
 export type KseLoadPoint = PseMtu & {
   businessDate: string
+  unit: 'MW'
   publicationTsUtc: string
   loadForecast: number | null
   loadActual: number | null
@@ -13,6 +14,7 @@ export type KseLoadPoint = PseMtu & {
 
 export type Pk5lWpHour = {
   businessDate: string
+  unit: 'MW'
   hourStartUtc: string
   hourEndUtc: string
   publicationTsUtc: string
@@ -113,6 +115,14 @@ function warsawMtuLabel(startUtc: string): Pick<CsdacPlnTargetPoint, 'localDate'
   }
 }
 
+function matchingBusinessDate(value: unknown, intervalStartUtc: string): string {
+  const date = businessDate(value)
+  if (warsawMtuLabel(intervalStartUtc).localDate !== date) {
+    throw new PseInputRowError('business_date')
+  }
+  return date
+}
+
 /** `dtime_utc` identifies the end of a 15-minute csdac-pln target-price period. */
 export function parseCsdacPlnRow(input: unknown, fetchedAtUtc: string): CsdacPlnTargetPoint {
   const row = rowObject(input)
@@ -138,9 +148,11 @@ export function parseCsdacPlnRow(input: unknown, fetchedAtUtc: string): CsdacPln
 export function parseKseLoadRow(input: unknown): KseLoadPoint {
   const row = rowObject(input)
   const end = utcTimestamp(row.dtime_utc, 'dtime_utc')
+  const interval = intervalEndingAt(end, 15 * 60_000, 'dtime_utc')
   return {
-    businessDate: businessDate(row.business_date),
-    ...intervalEndingAt(end, 15 * 60_000, 'dtime_utc'),
+    businessDate: matchingBusinessDate(row.business_date, interval.intervalStartUtc),
+    unit: 'MW',
+    ...interval,
     publicationTsUtc: utcTimestamp(row.publication_ts_utc, 'publication_ts_utc'),
     loadForecast: nullableNumber(row, 'load_fcst'),
     loadActual: nullableNumber(row, 'load_actual'),
@@ -153,7 +165,8 @@ export function parsePk5lWpRow(input: unknown): Pk5lWpHour {
   const end = utcTimestamp(row.plan_dtime_utc, 'plan_dtime_utc')
   const interval = intervalEndingAt(end, 60 * 60_000, 'plan_dtime_utc')
   return {
-    businessDate: businessDate(row.business_date),
+    businessDate: matchingBusinessDate(row.business_date, interval.intervalStartUtc),
+    unit: 'MW',
     hourStartUtc: interval.intervalStartUtc,
     hourEndUtc: interval.intervalEndUtc,
     publicationTsUtc: utcTimestamp(row.publication_ts_utc, 'publication_ts_utc'),
@@ -163,15 +176,18 @@ export function parsePk5lWpRow(input: unknown): Pk5lWpHour {
   }
 }
 
-/** Raw source expansion only; the current method's autumn rule needs a separate version decision. */
+/** Expand one PSE UTC source hour into the four distinct MTU required by method v1. */
 export function hourlyRecordToMtu(hour: Pk5lWpHour): Pk5lWpMtu[] {
   const startMs = Date.parse(hour.hourStartUtc)
   const endMs = Date.parse(hour.hourEndUtc)
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs - startMs !== 60 * 60_000 || startMs % (60 * 60_000) !== 0) {
     throw new PseInputRowError('hour interval')
   }
+  if (hour.unit !== 'MW') throw new PseInputRowError('unit')
+  matchingBusinessDate(hour.businessDate, hour.hourStartUtc)
   return Array.from({ length: 4 }, (_, index) => ({
     businessDate: hour.businessDate,
+    unit: hour.unit,
     intervalStartUtc: new Date(startMs + index * 15 * 60_000).toISOString(),
     intervalEndUtc: new Date(startMs + (index + 1) * 15 * 60_000).toISOString(),
     publicationTsUtc: hour.publicationTsUtc,
