@@ -23,6 +23,19 @@ export type Pk5lWpHour = {
 
 export type Pk5lWpMtu = PseMtu & Omit<Pk5lWpHour, 'hourStartUtc' | 'hourEndUtc'>
 
+/** Parsed target data, before an import command assigns scope, batch and entity IDs. */
+export type CsdacPlnTargetPoint = PseMtu & {
+  businessDate: string
+  localDate: string
+  localLabel: string
+  localOffset: string
+  value: number | null
+  unit: 'PLN/MWh'
+  publicationTsUtc: string
+  fetchedAtUtc: string
+  providerKey: string
+}
+
 export class PseInputRowError extends Error {
   constructor(field: string) {
     super(`Invalid PSE input row: ${field}`)
@@ -74,6 +87,50 @@ function intervalEndingAt(end: string, durationMs: number, field: string): PseMt
   return {
     intervalStartUtc: new Date(endMs - durationMs).toISOString(),
     intervalEndUtc: end,
+  }
+}
+
+const warsawMtuFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Warsaw',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
+
+function warsawMtuLabel(startUtc: string): Pick<CsdacPlnTargetPoint, 'localDate' | 'localLabel' | 'localOffset'> {
+  const parts = Object.fromEntries(
+    warsawMtuFormatter.formatToParts(new Date(startUtc)).map(({ type, value }) => [type, value]),
+  )
+  const { year, month, day, hour, minute } = parts
+  const localAsUtc = Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute))
+  const offsetMinutes = (localAsUtc - Date.parse(startUtc)) / 60_000
+  const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60)
+  const offsetRemainder = Math.abs(offsetMinutes) % 60
+  const sign = offsetMinutes < 0 ? '-' : '+'
+  return {
+    localDate: `${year}-${month}-${day}`,
+    localLabel: `${hour}:${minute}`,
+    localOffset: `${sign}${String(offsetHours).padStart(2, '0')}:${String(offsetRemainder).padStart(2, '0')}`,
+  }
+}
+
+/** `dtime_utc` identifies the end of a 15-minute csdac-pln target-price period. */
+export function parseCsdacPlnRow(input: unknown, fetchedAtUtc: string): CsdacPlnTargetPoint {
+  const row = rowObject(input)
+  const end = utcTimestamp(row.dtime_utc, 'dtime_utc')
+  const interval = intervalEndingAt(end, 15 * 60_000, 'dtime_utc')
+  const date = businessDate(row.business_date)
+  const local = warsawMtuLabel(interval.intervalStartUtc)
+  if (local.localDate !== date) throw new PseInputRowError('business_date')
+  const publicationTsUtc = utcTimestamp(row.publication_ts_utc, 'publication_ts_utc')
+  return {
+    businessDate: date,
+    ...interval,
+    ...local,
+    value: nullableNumber(row, 'csdac_pln'),
+    unit: 'PLN/MWh',
+    publicationTsUtc,
+    fetchedAtUtc: utcTimestamp(fetchedAtUtc, 'fetchedAtUtc'),
+    providerKey: `pse:csdac-pln:${interval.intervalStartUtc}:${publicationTsUtc}`,
   }
 }
 
