@@ -1,0 +1,15 @@
+{
+  "fixture": "evaluation-insufficient-coverage",
+  "window": {
+    "from": "2026-09-01",
+    "to": "2026-09-01",
+    "expectedMtu": 96,
+    "includedMtu": 76
+  },
+  "coverageRatio": 0.7916666667,
+  "expectedStatus": "insufficient_coverage",
+  "expectedMae": null,
+  "exclusionCounts": {
+    "missing_target": 20
+  }
+}

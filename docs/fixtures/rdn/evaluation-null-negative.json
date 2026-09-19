@@ -1,0 +1,30 @@
+{
+  "fixture": "evaluation-null-negative",
+  "evaluationKind": "test_fixture_replay",
+  "points": [
+    {
+      "intervalStartUtc": "2026-05-01T10:00:00Z",
+      "forecast": -120.0,
+      "baselineD1": -100.0,
+      "baselineD7": -80.0,
+      "actual": -140.0,
+      "included": true,
+      "exclusionCode": null
+    },
+    {
+      "intervalStartUtc": "2026-05-01T10:15:00Z",
+      "forecast": 10.0,
+      "baselineD1": 12.0,
+      "baselineD7": 8.0,
+      "actual": null,
+      "included": false,
+      "exclusionCode": "missing_target"
+    }
+  ],
+  "oracles": {
+    "negativePriceIsValid": true,
+    "nullActualIsNotZero": true,
+    "sameMtuDenominatorForAllSeries": true,
+    "includedMtuCount": 1
+  }
+}
