@@ -48,9 +48,9 @@ a passing review, and "works on my machine" are explicitly NOT sufficient.
 
 | label | required evidence in the PR |
 | --- | --- |
-| `verify:unit` | `yarn test` output showing the **new** test running — not merely a green no-op |
-| `verify:instance` | `yarn mercato db:migrate` on a clean database **and** `yarn test:integration:ephemeral` output |
-| `verify:e2e` | `yarn test:integration` (Playwright) output; trace or screenshot on failure |
+| `verify:unit` | green `ci` check **and** the new test named in the PR — a green no-op is not evidence |
+| `verify:instance` | run **on your sandbox**: `yarn mercato db:migrate` on a clean database **and** `yarn test:integration:ephemeral`; paste the **text output**, including the summary lines with counts |
+| `verify:e2e` | run **on your sandbox**: `yarn test:integration` (Playwright); attach a **screenshot or recording** |
 | `uat` | a comment on the Issue from a person who did not write the code, recording what worked and what did not |
 
 ### Why this is spelled out
@@ -66,8 +66,36 @@ that means the task was cut wrong. Say so in a comment and split it. Raising
 your own bar silently is acceptable; **lowering it is not** — a task never
 closes below its label.
 
-### Enforcement status
+### Where each gate runs
 
-`verify:instance` is enforced automatically once #41 lands; `verify:e2e` once
-#42 lands. Until then, run the commands locally and paste the output into the
-PR. The requirement is identical either way — only who checks it changes.
+Only `verify:unit` is enforced by CI. The `ci` job is deliberately free of
+infrastructure — no database, no running app, no browser — and will not grow to
+include the others. The team already runs three Open Mercato sandboxes;
+duplicating that inside GitHub Actions would cost hours of a 20h budget to build
+and add roughly eight minutes of wall clock to every one of ~27 pull requests.
+
+`verify:instance` and `verify:e2e` therefore run on the author's sandbox, and
+the evidence is pasted into the PR. Procedures: #41 and #42.
+
+### Evidence shape follows what is being verified
+
+**Text for instance-level, images for visual-level.** Instance checks are about
+counts — how many migrations applied, how many tests passed out of how many — so
+the summary lines carry the information and a photograph of a console adds
+nothing while being harder to search. End-to-end and UAT checks are about what is
+on screen — a denial message, an empty state, a replay marker, a negative price —
+so a screenshot is the evidence.
+
+### Anchor every screenshot to a commit
+
+A screenshot with no version attached does not say which build it shows; it may
+predate three fixes. Every visual proof names the commit SHA it came from, either
+visible in the shot or stated beside it.
+
+### Human-attested gates decay — this is the counterweight
+
+An automated gate is impersonal and therefore reliable. A gate that depends on
+someone saying "I ran it" degrades under time pressure; by hour fifteen the
+default is a stale screenshot and a confident sentence. Naming the exact command,
+requiring the counts, and requiring the SHA is what keeps this honest, because
+each is cheap to produce truthfully and awkward to fake casually.

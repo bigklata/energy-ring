@@ -18,23 +18,27 @@ jobs:
     # for a status that will never be reported. Change it only together with the
     # ruleset (Settings -> Rules -> Rulesets -> main -> Require status checks).
     # The individual commands stay visible as step names below.
+    #
+    # SCOPE — deliberately infrastructure-free, and staying that way.
+    #
+    # This job runs only what needs no database, no running app and no browser:
+    # generate, typecheck, lint, ds:check, unit tests (jest), build. It is the
+    # `verify:unit` gate and nothing more.
+    #
+    # Do NOT add `db:migrate`, `test:integration:ephemeral` or Playwright here.
+    # The team already runs three Open Mercato sandboxes; instance-level and
+    # end-to-end verification happen there, and the evidence is pasted into the
+    # Issue and the PR. See .ai/review-checklist.md, "Verification gate".
+    #
+    # Rationale: a 20h budget cannot absorb both the build-out of that CI
+    # plumbing and ~8 extra minutes of wall clock on every one of ~27 PRs.
     name: ci
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: open-mercato
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
     env:
+      # No Postgres service: nothing in this job talks to a database. The URL is
+      # a syntactically valid placeholder so config loaders that merely parse it
+      # do not fail. If a step ever needs a real database, that step belongs on a
+      # sandbox, not here.
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/open-mercato
       # CI-only placeholders, never used outside this ephemeral job.
       JWT_SECRET: ci-only-placeholder-secret-not-for-production-32chars
