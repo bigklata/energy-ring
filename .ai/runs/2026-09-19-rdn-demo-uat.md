@@ -16,7 +16,7 @@ Make the host setup, historical replay demonstration, operator UAT, and final re
 
 ## Risks
 
-RDN runtime, panel, and API remain incomplete. These documents are preparation only; #40, #43, and #45 cannot be closed from them. The UAT guide refers to the approved method v1, whose code and contract are proposed on a separate topic branch.
+RDN runtime, panel, and API remain incomplete. These documents are preparation only; #40, #43, and #45 cannot be closed from them. The UAT guide requires the operator to verify the method version deployed at the time of the trial; the v1 proposal lives on a separate topic branch and is not present at this commit.
 
 ## Implementation Plan
 

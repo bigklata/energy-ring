@@ -1,6 +1,6 @@
 # Energy Ring — lokalne uruchomienie
 
-Energy Ring rozwija demonstrator prognozy cen RDN na danych PSE. **Obecny stan:** można uruchomić host Open Mercato i otworzyć jego panel `/backend`; istnieje też samodzielny klient HTTP PSE w `src/modules/rdn_forecast/integrations/pse.ts`. Moduł RDN nie jest jeszcze aktywowany, a jego panel, API i replay nie są dostępne. [Issue #40](https://github.com/bigklata/energy-ring/issues/40) zależy od [#39/G1](https://github.com/bigklata/energy-ring/issues/39), które ma połączyć panel z rzeczywistym API i potwierdzić pełną ścieżkę E2E. Samo uruchomienie hosta nie oznacza działającego demo RDN.
+Energy Ring rozwija demonstrator prognozy cen RDN na danych PSE. **Obecny stan tego commita:** można uruchomić host Open Mercato i otworzyć jego panel `/backend`; moduł RDN oraz klient PSE są przygotowywane osobno i nie są tu dostępne. Panel RDN, jego API i replay również nie działają. [Issue #40](https://github.com/bigklata/energy-ring/issues/40) zależy od [#39/G1](https://github.com/bigklata/energy-ring/issues/39), które ma połączyć panel z rzeczywistym API i potwierdzić pełną ścieżkę E2E. Samo uruchomienie hosta nie oznacza działającego demo RDN.
 
 ## Od czystego klona do panelu hosta
 
@@ -27,6 +27,6 @@ Po zakończeniu startu otwórz [http://localhost:3000/backend](http://localhost:
 | --- | --- |
 | Start lokalnej infrastruktury, instalacja, inicjalizacja i panel hosta `/backend` | Komendy istnieją w repozytorium; poprawny start na czystej maszynie wymaga osobnego wykonania i weryfikacji. |
 | Panel RDN `/backend/rdn-forecast` | **Niedostępny**: to proponowana trasa, nie zarejestrowana strona. |
-| Import PSE, kontrola jakości, prognoza, ocena i replay przez UI/API | **Niedostępne**: działa tylko samodzielna warstwa transportu PSE; pełne spięcie i E2E są zadaniem #39/G1. |
+| Import PSE, kontrola jakości, prognoza, ocena i replay przez UI/API | **Niedostępne**: w tym commicie brak aktywnego modułu RDN i spięcia PSE; pełna ścieżka i E2E są zadaniem #39/G1. |
 
 Scenariusz przyszłego pokazu oraz warunki uczciwego oznaczenia replay są w [docs/demo.md](docs/demo.md). Kontrakt produktu i ograniczenia danych opisują [specyfikacja MVP](.ai/specs/2026-09-19-rdn-forecast-mvp.md), [projekt kontraktów](.ai/specs/2026-09-19-rdn-forecast-mvp-technical-contracts.md) i [metoda prognozy](docs/rdn-forecast-method.md). Są to źródła wymagań, a nie dowód, że odpowiadający im kod już działa.
