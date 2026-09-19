@@ -1,5 +1,9 @@
 # Energy Ring — product brief MVP
 
+> **Zakres MVP zaktualizowany 2026-09-19.** Użytkownik wybrał prognozę RDN: import PSE, kontrola jakości, korekta baseline’u i porównanie z opublikowanymi cenami. Bez tradingu, portfela i treningu ML. Decyzja: [issue #2](https://github.com/bigklata/energy-ring/issues/2); robocza specyfikacja: [.ai/specs/2026-09-19-rdn-forecast-mvp.md](../.ai/specs/2026-09-19-rdn-forecast-mvp.md). Zakres produktowy jest zatwierdzony, projekt techniczny pozostaje Draft.
+
+> Poniższy brief SaaS/ML oraz jego dokumenty pochodne są alternatywą poza aktualnym MVP; zachowano oryginalną analizę.
+
 ## Problem
 
 Analityk rynku energii potrzebuje jednego miejsca do obserwowania pracy KSE, prognozowania godzinowych cen RDN i badania wpływu prognoz na symulowany portfel zakupowy.
@@ -54,4 +58,3 @@ Model cenowy osiąga w kroczącym backtestingu MAE co najmniej 10% niższe od le
 - [Model domeny](domain-model.md)
 - [Glossary](glossary.md)
 - [ADR](adr/)
-

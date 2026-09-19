@@ -1,5 +1,9 @@
 # Energy Ring
 
+> **Zakres MVP zaktualizowany 2026-09-19.** Użytkownik wybrał prognozę RDN: import PSE, kontrola jakości, korekta baseline’u i porównanie z opublikowanymi cenami. Bez tradingu, portfela i treningu ML. Decyzja: [issue #2](https://github.com/bigklata/energy-ring/issues/2); robocza specyfikacja: [.ai/specs/2026-09-19-rdn-forecast-mvp.md](.ai/specs/2026-09-19-rdn-forecast-mvp.md). Zakres produktowy jest zatwierdzony, projekt techniczny pozostaje Draft.
+
+> Poniższa wizja tradingowa oraz powiązane z nią ADR-y są materiałem historycznym, nie obowiązującym zakresem MVP. Zachowano je jako kontekst decyzji.
+
 Internal founding-team platform on full Open Mercato: ingest live PSE system signals, store them for analytics, form exchange price-direction views, and execute (within hard limits) proprietary swing-style futures trades for the team’s own account.
 
 ## Language

@@ -1,5 +1,9 @@
 # Analiza — Marek
 
+> **Zakres MVP zaktualizowany 2026-09-19.** Użytkownik wybrał prognozę RDN: import PSE, kontrola jakości, korekta baseline’u i porównanie z opublikowanymi cenami. Bez tradingu, portfela i treningu ML. Decyzja: [issue #2](https://github.com/bigklata/energy-ring/issues/2); robocza specyfikacja: [.ai/specs/2026-09-19-rdn-forecast-mvp.md](../.ai/specs/2026-09-19-rdn-forecast-mvp.md). Zakres produktowy jest zatwierdzony, projekt techniczny pozostaje Draft.
+
+> Kierunek produktowy tej analizy przyjęto. Jej szczegółowe ADR-y i model domeny pozostają propozycjami do weryfikacji w #3/#6/#7: nie zatwierdzono automatycznie podziału modułów, SSE, stałego odcięcia, 96 interwałów dla każdej doby ani pomijania testów.
+
 Trzecia, niezależna pozycja obok `docs-grzegorz/` i `CONTEXT.md` + `docs/adr/`.
 Świadomie nie dotyka cudzych plików — scalenie trzech analiz jest osobnym zadaniem.
 
