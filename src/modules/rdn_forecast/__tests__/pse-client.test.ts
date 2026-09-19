@@ -302,7 +302,11 @@ describe('PseClient', () => {
           nextLink: null,
         }),
       ]
-      const fetchImpl = jest.fn(async () => responses.shift()!)
+      const requestedUrls: string[] = []
+      const fetchImpl: PseFetchLike = jest.fn(async (url) => {
+        requestedUrls.push(url)
+        return responses.shift()!
+      })
       const sleepCalls: number[] = []
       const client = new PseClient({
         fetchImpl,
@@ -314,8 +318,8 @@ describe('PseClient', () => {
 
       expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }])
       expect(fetchImpl).toHaveBeenCalledTimes(3)
-      expect(fetchImpl.mock.calls[1][0]).toBe(pageTwoUrl)
-      expect(fetchImpl.mock.calls[2][0]).toBe(pageTwoUrl)
+      expect(requestedUrls[1]).toBe(pageTwoUrl)
+      expect(requestedUrls[2]).toBe(pageTwoUrl)
       expect(sleepCalls).toEqual([10])
     })
 

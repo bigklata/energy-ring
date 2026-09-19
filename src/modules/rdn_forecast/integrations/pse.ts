@@ -253,7 +253,7 @@ export class PseClient {
 
   /** Fetches every provider page, following only provider-issued allowlisted cursors. */
   async getAll<T = unknown>(options: PseGetOptions): Promise<T[]> {
-    let cursor = this.buildUrl(options)
+    let cursor: URL | undefined = this.buildUrl(options)
     const maxAttempts = assertPositiveInteger(options.maxAttempts ?? this.maxAttempts, 'maxAttempts')
     const baseDelayMs = assertPositiveFinite(options.baseDelayMs ?? this.baseDelayMs, 'baseDelayMs')
     const timeoutMs = assertPositiveFinite(options.timeoutMs ?? this.timeoutMs, 'timeoutMs')
