@@ -55,7 +55,9 @@ correction(t) = kWind * Δwind(hour(t)) + kPv * Δpv(hour(t)) + kLoad * Δload(h
     Δpv(h)   = fcst_pv_tot_gen(D, h) − fcst_pv_tot_gen(D−1, h)
     Δload(h) = grid_demand_fcst(D, h) − grid_demand_fcst(D−1, h)
 
-forecast(t) = wD1 * baselineD1(t) + wD7 * baselineD7(t) + correction(t)
+availableWeight(t) = Σ wᵢ for each baseline i available at t
+forecast(t) = (Σ wᵢ * baselineᵢ(t) for available baselines i) / availableWeight(t)
+             + correction(t)
 ```
 
 `sameLocalLabel(t)` and `hour(t)` are defined precisely in section 4 (they are
@@ -71,9 +73,14 @@ use unequal or additional weights, e.g. more baselines, but the sum-to-one
 constraint on price-scale weights must hold so the corrected forecast stays
 in PLN/MWh without an implicit rescale).
 
-A forecast point with any required input unavailable (baseline or delta) is
-**not computed with a substituted zero**; it takes the missing-input rule in
-section 5.
+A forecast point with a missing correction input is **not computed with a
+substituted zero**; it takes the missing-input rule in section 5. If exactly
+one baseline is missing, the available baseline weights are renormalized by
+`availableWeight(t)` before the weighted average above is calculated. For
+example, with `wD1 = wD7 = 0.5` and only D-7 available, the baseline
+contribution is `baselineD7(t)`, not `0.5 * baselineD7(t)`. The fallback and
+the original available/missing baseline identities are recorded in point
+provenance. If no baseline is available, the point is blocked.
 
 ## 4. MTU set and hourly-to-15-minute mapping
 
@@ -102,9 +109,10 @@ case (D, D-1, D-7 all 96 MTU) and needs three explicit DST rules:
    `baselineD7(t)` for those 4 MTU of D is `missing`, not zero and not
    borrowed from an adjacent hour. If both baselines are missing at the same
    `t`, that forecast point is blocked (section 5); if only one is missing,
-   `forecast(t)` uses the one available baseline with its own weight only —
-   this is a per-parameter-version fallback, not a change to the formula
-   shape, and it must be recorded on the forecast point's provenance.
+   `forecast(t)` renormalizes the available baseline weight to one before
+   applying it — it does not multiply the sole baseline by its original
+   weight. This is a per-parameter-version fallback, not a change to the
+   formula shape, and it must be recorded on the forecast point's provenance.
 3. **D-1 or D-7 is an autumn-transition day (100 MTU, local 02:00–02:45
    occurs twice) but D is ordinary:** the baseline day has *two* MTU sharing
    that local label. The tie-break rule is fixed and versioned: use the
@@ -120,7 +128,8 @@ hourly correction inputs).
 ## 5. Cutoff and missing-input policy
 
 **Cutoff:** a fixed clock policy, not the observed publication moment.
-`cutoffUtc(D)` = **15:30 Europe/Warsaw on D-1**. Rationale: the only measured
+`cutoffUtc(D)` is the UTC instant obtained by converting **15:30
+Europe/Warsaw on D-1**. Rationale: the only measured
 publication moment for D's price was 2026-09-18 13:50:10 local
 (`docs-marek/pomiary-api-pse.md`, one measurement); 15:30 adds a ~100-minute
 margin against that single observation and is a policy choice, not a claim
@@ -138,7 +147,7 @@ cutoff is unusable for that run even if its own `publicationTsUtc` predates
 cutoff.
 
 **Historical/replay input availability:** a past run may only use a version
-for which a **captured, timestamped import record** (`fetchedAtUtc` before the
+for which a **captured, timestamped import record** (`fetchedAtUtc` at or before the
 historical cutoff) exists. Re-querying today's archive and filtering by
 `publication_ts_utc <= cutoff` is explicitly **not sufficient proof** — the
 current archive row may be a later revision than what was knowable at the
