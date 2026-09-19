@@ -1,33 +1,13 @@
-/**
- * PSE (Polskie Sieci Elektroenergetyczne) public API — pure transport layer.
- *
- * Scope: GET requests only, with a bounded timeout, exponential backoff, and
- * a hard retry-attempt limit. The only host this client will ever call is
- * `api.raporty.pse.pl` (see `docs/pse-source-catalog.md`) — any other host
- * is rejected before a network call is attempted.
- *
- * This module deliberately knows nothing about the RDN forecast domain: no
- * entities, no persistence, no field mapping. It only understands the
- * provider's OData-style query shape (`$filter`, `$select`) and its cursor
- * pagination contract via `nextLink` — but does not implement pagination
- * itself. Wiring cursor pagination to a domain adapter is issue #23 (I2).
- *
- * The PSE API returns HTTP 400 for `$top`; callers must page via `nextLink`
- * instead, so this client refuses to send `$top` at all rather than let a
- * caller discover the 400 at runtime.
- */
+/** Pure transport client for the public PSE reporting API. */
 
-/** The only host this client is allowed to call. */
 export const PSE_ALLOWED_HOST = 'api.raporty.pse.pl'
-
-/** Default base URL for the public PSE reporting API. */
 export const PSE_DEFAULT_BASE_URL = `https://${PSE_ALLOWED_HOST}/api`
 
 const DEFAULT_TIMEOUT_MS = 10_000
 const DEFAULT_MAX_ATTEMPTS = 3
 const DEFAULT_BASE_DELAY_MS = 200
+const DEFAULT_MAX_RESPONSE_BYTES = 1_000_000
 
-/** Stable, matchable error codes — never rely on `message` text for branching. */
 export type PseClientErrorCode =
   | 'host_not_allowed'
   | 'unsupported_query_param'
@@ -36,6 +16,7 @@ export type PseClientErrorCode =
   | 'http_error'
   | 'retry_limit_exceeded'
   | 'invalid_response'
+  | 'redirect_not_allowed'
 
 export class PseClientError extends Error {
   readonly code: PseClientErrorCode
@@ -51,203 +32,267 @@ export class PseClientError extends Error {
   }
 }
 
-/** Minimal subset of the global `fetch` contract this client depends on. */
 export type PseFetchLike = (
   input: string,
-  init: { signal: AbortSignal; headers?: Record<string, string> },
+  init: { signal: AbortSignal; headers?: Record<string, string>; redirect?: 'error' | 'follow' | 'manual' },
 ) => Promise<{
   ok: boolean
   status: number
+  headers?: { get(name: string): string | null }
+  body?: { getReader(): { read(): Promise<{ done: boolean; value?: Uint8Array }> } }
+  text?: () => Promise<string>
   json: () => Promise<unknown>
 }>
 
 export interface PseClientOptions {
-  /** Overridable for tests only; production callers should rely on the default. */
   baseUrl?: string
   timeoutMs?: number
   maxAttempts?: number
   baseDelayMs?: number
+  maxResponseBytes?: number
   fetchImpl?: PseFetchLike
-  /** Injectable for tests so retry backoff does not slow the suite down. */
   sleep?: (ms: number) => Promise<void>
 }
 
 export interface PseGetOptions {
-  /** Endpoint segment, e.g. `csdac-pln`, `pk5l-wp`, `kse-load`. */
   endpoint: string
-  /** Rendered as `$filter=business_date eq 'YYYY-MM-DD'`. */
   businessDate?: string
-  /** Rendered as `$select=field1,field2`. */
   select?: string[]
-  /**
-   * Additional raw OData-style query params. Any key that resolves to `$top`
-   * (case-insensitive, with or without the leading `$`) throws synchronously
-   * — the PSE API returns HTTP 400 for it, and pagination must use the
-   * provider's `nextLink` cursor instead (issue #23).
-   */
   params?: Record<string, string | number | boolean>
-  /** Per-call overrides of the client's defaults. */
   timeoutMs?: number
   maxAttempts?: number
   baseDelayMs?: number
 }
 
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500
+function assertPositiveFinite(value: number, name: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new PseClientError(`${name} must be a positive finite number`, 'invalid_response')
+  }
+  return value
 }
 
-function backoffDelayMs(baseDelayMs: number, attempt: number): number {
-  return baseDelayMs * 2 ** (attempt - 1)
+function assertPositiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new PseClientError(`${name} must be a positive integer`, 'invalid_response')
+  }
+  return value
 }
 
-function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function validateBaseUrl(value: string): URL {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch (cause) {
+    throw new PseClientError('PSE base URL is invalid', 'host_not_allowed', { cause })
+  }
+  if (
+    url.protocol !== 'https:' ||
+    url.hostname !== PSE_ALLOWED_HOST ||
+    url.port ||
+    url.username ||
+    url.password ||
+    !/^\/api\/?$/.test(url.pathname) ||
+    url.search ||
+    url.hash
+  ) {
+    throw new PseClientError('PSE base URL must be the HTTPS allowlisted API origin', 'host_not_allowed')
+  }
+  return url
 }
 
-function isAbortError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'AbortError'
+function validateEndpoint(endpoint: string): string {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(endpoint)) {
+    throw new PseClientError('PSE endpoint is invalid', 'host_not_allowed')
+  }
+  return endpoint
 }
 
+function isValidCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+}
+
+const FIELD_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
 const TOP_PARAM_PATTERN = /^\$?top$/i
+const RESERVED_PARAM_PATTERN = /^\$?(?:filter|select)$/i
 
-/**
- * Pure transport client for the public PSE reporting API.
- *
- * No credentials, no domain knowledge — callers pass an endpoint segment and
- * OData-style query options and get back parsed JSON (or a `PseClientError`).
- */
+async function readChunk(
+  reader: { read(): Promise<{ done: boolean; value?: Uint8Array }> },
+  signal: AbortSignal,
+): Promise<{ done: boolean; value?: Uint8Array }> {
+  if (signal.aborted) {
+    const error = new Error('The operation was aborted')
+    error.name = 'AbortError'
+    throw error
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      signal.removeEventListener('abort', onAbort)
+      const error = new Error('The operation was aborted')
+      error.name = 'AbortError'
+      reject(error)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    reader.read().then(
+      (result) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(result)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+function buildQuery(options: PseGetOptions): URLSearchParams {
+  const search = new URLSearchParams()
+  if (options.businessDate !== undefined) {
+    if (!isValidCalendarDate(options.businessDate)) {
+      throw new PseClientError('businessDate must be a valid YYYY-MM-DD date', 'invalid_response')
+    }
+    search.set('$filter', `business_date eq '${options.businessDate}'`)
+  }
+  if (options.select !== undefined) {
+    if (options.select.length === 0 || options.select.some((field) => !FIELD_PATTERN.test(field))) {
+      throw new PseClientError('select must contain field identifiers only', 'invalid_response')
+    }
+    search.set('$select', options.select.join(','))
+  }
+  for (const [key, value] of Object.entries(options.params ?? {})) {
+    if (TOP_PARAM_PATTERN.test(key)) {
+      throw new PseClientError("PSE API rejects '$top' — use the nextLink cursor", 'unsupported_query_param')
+    }
+    if (RESERVED_PARAM_PATTERN.test(key)) {
+      throw new PseClientError(`Query parameter '${key}' is reserved`, 'unsupported_query_param')
+    }
+    search.set(key, String(value))
+  }
+  return search
+}
+
 export class PseClient {
-  private readonly baseUrl: string
+  private readonly baseUrl: URL
   private readonly timeoutMs: number
   private readonly maxAttempts: number
   private readonly baseDelayMs: number
+  private readonly maxResponseBytes: number
   private readonly fetchImpl: PseFetchLike
   private readonly sleep: (ms: number) => Promise<void>
 
   constructor(options: PseClientOptions = {}) {
-    this.baseUrl = options.baseUrl ?? PSE_DEFAULT_BASE_URL
-    this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    this.maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
-    this.baseDelayMs = options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS
+    this.baseUrl = validateBaseUrl(options.baseUrl ?? PSE_DEFAULT_BASE_URL)
+    this.timeoutMs = assertPositiveFinite(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 'timeoutMs')
+    this.maxAttempts = assertPositiveInteger(options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, 'maxAttempts')
+    this.baseDelayMs = assertPositiveFinite(options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS, 'baseDelayMs')
+    this.maxResponseBytes = assertPositiveInteger(options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES, 'maxResponseBytes')
     const fetchImpl = options.fetchImpl ?? (globalThis.fetch as unknown as PseFetchLike | undefined)
-    if (!fetchImpl) {
-      throw new PseClientError(
-        'No fetch implementation available; pass `fetchImpl` explicitly or run on a runtime with a global `fetch`.',
-        'invalid_response',
-      )
-    }
+    if (!fetchImpl) throw new PseClientError('No fetch implementation available', 'invalid_response')
     this.fetchImpl = fetchImpl
-    this.sleep = options.sleep ?? defaultSleep
+    this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
   }
 
-  /**
-   * Builds the request URL, rejecting an unsupported `$top` param and any
-   * host outside the allowlist. Throws synchronously — no network call is
-   * attempted for a rejected request.
-   */
   buildUrl(options: PseGetOptions): URL {
-    const search = new URLSearchParams()
-    if (options.businessDate) {
-      search.set('$filter', `business_date eq '${options.businessDate}'`)
-    }
-    if (options.select?.length) {
-      search.set('$select', options.select.join(','))
-    }
-    if (options.params) {
-      for (const [key, value] of Object.entries(options.params)) {
-        if (TOP_PARAM_PATTERN.test(key)) {
-          throw new PseClientError(
-            "PSE API rejects '$top' with HTTP 400 — page via the provider's `nextLink` cursor instead (see issue #23).",
-            'unsupported_query_param',
-          )
-        }
-        search.set(key, String(value))
-      }
-    }
-
-    const url = new URL(`${this.baseUrl.replace(/\/+$/, '')}/${options.endpoint.replace(/^\/+/, '')}`)
-    url.search = search.toString()
-
-    if (url.hostname !== PSE_ALLOWED_HOST) {
-      throw new PseClientError(
-        `Refusing to call host "${url.hostname}"; only "${PSE_ALLOWED_HOST}" is allowlisted.`,
-        'host_not_allowed',
-      )
-    }
-
+    const url = new URL(`${this.baseUrl.toString().replace(/\/$/, '')}/${validateEndpoint(options.endpoint)}`)
+    url.search = buildQuery(options).toString()
     return url
   }
 
-  /**
-   * Issues a single GET request, with a bounded timeout, exponential
-   * backoff between attempts, and a hard retry-attempt limit. Only a
-   * timeout, network error, HTTP 429, or HTTP 5xx is retried; any other
-   * HTTP error (e.g. 400, 404) fails on the first attempt.
-   */
   async get<T = unknown>(options: PseGetOptions): Promise<T> {
     const url = this.buildUrl(options)
-    const maxAttempts = options.maxAttempts ?? this.maxAttempts
-    const baseDelayMs = options.baseDelayMs ?? this.baseDelayMs
-    const timeoutMs = options.timeoutMs ?? this.timeoutMs
-
+    const maxAttempts = assertPositiveInteger(options.maxAttempts ?? this.maxAttempts, 'maxAttempts')
+    const baseDelayMs = assertPositiveFinite(options.baseDelayMs ?? this.baseDelayMs, 'baseDelayMs')
+    const timeoutMs = assertPositiveFinite(options.timeoutMs ?? this.timeoutMs, 'timeoutMs')
     let lastError: PseClientError | undefined
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        const response = await this.fetchImpl(url.toString(), { signal: controller.signal })
+        const response = await this.fetchImpl(url.toString(), {
+          signal: controller.signal,
+          redirect: 'manual',
+          headers: { accept: 'application/json' },
+        })
 
+        if (response.status >= 300 && response.status < 400) {
+          throw new PseClientError('PSE redirects are not allowed', 'redirect_not_allowed', { status: response.status })
+        }
         if (!response.ok) {
-          const httpError = new PseClientError(`PSE request failed with status ${response.status}`, 'http_error', {
+          const error = new PseClientError(`PSE request failed with status ${response.status}`, 'http_error', {
             status: response.status,
           })
-          if (isRetryableStatus(response.status) && attempt < maxAttempts) {
-            lastError = httpError
-            await this.sleep(backoffDelayMs(baseDelayMs, attempt))
+          if ((response.status === 429 || response.status >= 500) && attempt < maxAttempts) {
+            lastError = error
+            await this.sleep(baseDelayMs * 2 ** (attempt - 1))
             continue
           }
-          throw httpError
-        }
-
-        return (await response.json()) as T
-      } catch (err) {
-        if (err instanceof PseClientError) throw err
-
-        const timedOut = isAbortError(err)
-        const wrapped = timedOut
-          ? new PseClientError(`PSE request timed out after ${timeoutMs}ms`, 'timeout', { cause: err })
-          : new PseClientError('PSE request failed before receiving a response', 'network_error', { cause: err })
-
-        if (attempt >= maxAttempts) {
-          // Only mask the underlying cause behind `retry_limit_exceeded` when
-          // there actually were retries — a single-attempt failure (maxAttempts
-          // === 1) should surface its real code (e.g. `timeout`) directly.
-          if (maxAttempts > 1) {
-            throw new PseClientError(
-              `PSE request failed after ${attempt} attempt(s): ${wrapped.message}`,
-              'retry_limit_exceeded',
-              { cause: wrapped },
-            )
+          if (response.status === 429 || response.status >= 500) {
+            throw new PseClientError(`PSE request failed after ${attempt} attempt(s)`, 'retry_limit_exceeded', {
+              status: response.status,
+              cause: error,
+            })
           }
-          throw wrapped
+          throw error
+        }
+        return (await this.readJson(response, controller.signal)) as T
+      } catch (err) {
+        if (err instanceof PseClientError && err.code !== 'timeout' && err.code !== 'network_error') throw err
+        const timedOut = (err instanceof PseClientError && err.code === 'timeout') || (err instanceof Error && err.name === 'AbortError')
+        const wrapped = err instanceof PseClientError
+          ? err
+          : new PseClientError(timedOut ? `PSE request timed out after ${timeoutMs}ms` : 'PSE request failed before receiving a response', timedOut ? 'timeout' : 'network_error', { cause: err })
+        if (attempt >= maxAttempts) {
+          if (maxAttempts === 1) throw wrapped
+          throw new PseClientError(`PSE request failed after ${attempt} attempt(s)`, 'retry_limit_exceeded', { cause: wrapped })
         }
         lastError = wrapped
-        await this.sleep(backoffDelayMs(baseDelayMs, attempt))
+        await this.sleep(baseDelayMs * 2 ** (attempt - 1))
       } finally {
         clearTimeout(timer)
       }
     }
+    throw lastError ?? new PseClientError('PSE request retry limit exceeded', 'retry_limit_exceeded')
+  }
 
-    // Unreachable when maxAttempts >= 1, kept only to satisfy the type checker.
-    throw (
-      lastError ??
-      new PseClientError('PSE request failed for an unknown reason', 'retry_limit_exceeded')
-    )
+  private async readJson(response: Awaited<ReturnType<PseFetchLike>>, signal: AbortSignal): Promise<unknown> {
+    const declaredLength = response.headers?.get('content-length')
+    if (declaredLength !== null && declaredLength !== undefined && /^\d+$/.test(declaredLength) && Number(declaredLength) > this.maxResponseBytes) {
+      throw new PseClientError('PSE response exceeds the configured size limit', 'invalid_response')
+    }
+
+    if (response.body) {
+      const reader = response.body.getReader()
+      const chunks: Uint8Array[] = []
+      let size = 0
+      while (true) {
+        if (signal.aborted) throw new PseClientError('PSE response read timed out', 'timeout')
+        const result = await readChunk(reader, signal)
+        if (result.done) break
+        const chunk = result.value ?? new Uint8Array()
+        size += chunk.byteLength
+        if (size > this.maxResponseBytes) throw new PseClientError('PSE response exceeds the configured size limit', 'invalid_response')
+        chunks.push(chunk)
+      }
+      const bytes = new Uint8Array(size)
+      let offset = 0
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+      try { return JSON.parse(new TextDecoder().decode(bytes)) } catch (cause) { throw new PseClientError('PSE returned invalid JSON', 'invalid_response', { cause }) }
+    }
+    if (response.text) {
+      const text = await response.text()
+      if (new TextEncoder().encode(text).byteLength > this.maxResponseBytes) {
+        throw new PseClientError('PSE response exceeds the configured size limit', 'invalid_response')
+      }
+      try { return JSON.parse(text) } catch (cause) { throw new PseClientError('PSE returned invalid JSON', 'invalid_response', { cause }) }
+    }
+    try { return await response.json() } catch (cause) { throw new PseClientError('PSE returned invalid JSON', 'invalid_response', { cause }) }
   }
 }
 
-/** Convenience one-shot GET without constructing a client explicitly. */
 export async function pseGet<T = unknown>(options: PseGetOptions & PseClientOptions): Promise<T> {
   return new PseClient(options).get<T>(options)
 }

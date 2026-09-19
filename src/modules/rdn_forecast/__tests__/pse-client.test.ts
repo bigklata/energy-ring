@@ -10,18 +10,16 @@ import type { PseFetchLike } from '@/modules/rdn_forecast/integrations/pse'
 const noopSleep = async (_ms: number): Promise<void> => {}
 
 function jsonResponse(body: unknown, status = 200) {
-  return { ok: status >= 200 && status < 300, status, json: async () => body }
+  return { ok: status >= 200 && status < 300, status, headers: { get: () => null }, json: async () => body }
 }
 
 describe('PseClient', () => {
   describe('allowlist', () => {
     it('rejects a host outside the allowlist before ever calling fetch', async () => {
       const fetchImpl = jest.fn<ReturnType<PseFetchLike>, Parameters<PseFetchLike>>()
-      const client = new PseClient({ baseUrl: 'https://evil.example.com/api', fetchImpl, sleep: noopSleep })
-
-      await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({
-        code: 'host_not_allowed',
-      })
+      expect(() => new PseClient({ baseUrl: 'https://evil.example.com/api', fetchImpl, sleep: noopSleep })).toThrow(
+        expect.objectContaining({ code: 'host_not_allowed' }),
+      )
       expect(fetchImpl).not.toHaveBeenCalled()
     })
 
@@ -31,6 +29,25 @@ describe('PseClient', () => {
       const url = client.buildUrl({ endpoint: 'csdac-pln' })
       expect(url.hostname).toBe(PSE_ALLOWED_HOST)
       expect(url.toString().startsWith(PSE_DEFAULT_BASE_URL)).toBe(true)
+    })
+
+    it('rejects HTTP even when the hostname is allowlisted', () => {
+      expect(() => new PseClient({ baseUrl: `http://${PSE_ALLOWED_HOST}/api` })).toThrow(
+        expect.objectContaining({ code: 'host_not_allowed' }),
+      )
+    })
+
+    it('does not follow a redirect to another host', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 302,
+        headers: { get: (name: string) => name === 'location' ? 'https://evil.example.com/private' : null },
+        json: async () => ({}),
+      })
+      const client = new PseClient({ fetchImpl, sleep: noopSleep })
+
+      await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'redirect_not_allowed' })
+      expect(fetchImpl).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ redirect: 'manual' }))
     })
   })
 
@@ -72,6 +89,35 @@ describe('PseClient', () => {
       expect(url.pathname).toBe('/api/csdac-pln')
       expect(url.searchParams.get('$filter')).toBe("business_date eq '2026-09-19'")
       expect(url.searchParams.get('$select')).toBe('dtime_utc,period_utc,csdac_pln')
+    })
+
+    it.each(['2026-02-29', '2026-13-01', 'not-a-date'])('rejects an invalid business date: %s', async (businessDate) => {
+      const fetchImpl = jest.fn()
+      const client = new PseClient({ fetchImpl, sleep: noopSleep })
+
+      await expect(client.get({ endpoint: 'csdac-pln', businessDate })).rejects.toMatchObject({ code: 'invalid_response' })
+      expect(fetchImpl).not.toHaveBeenCalled()
+    })
+
+    it('does not allow raw params to overwrite generated filter or select', async () => {
+      const fetchImpl = jest.fn()
+      const client = new PseClient({ fetchImpl, sleep: noopSleep })
+
+      await expect(client.get({
+        endpoint: 'csdac-pln',
+        businessDate: '2026-09-19',
+        select: ['csdac_pln'],
+        params: { '$filter': 'business_date ne null' },
+      })).rejects.toMatchObject({ code: 'unsupported_query_param' })
+      expect(fetchImpl).not.toHaveBeenCalled()
+    })
+
+    it('rejects endpoint traversal and invalid select fields', () => {
+      const client = new PseClient({ fetchImpl: jest.fn(), sleep: noopSleep })
+      expect(() => client.buildUrl({ endpoint: '../private' })).toThrow(expect.objectContaining({ code: 'host_not_allowed' }))
+      expect(() => client.buildUrl({ endpoint: 'csdac-pln', select: ['field,other'] })).toThrow(
+        expect.objectContaining({ code: 'invalid_response' }),
+      )
     })
 
     it('returns the parsed JSON body on success', async () => {
@@ -151,11 +197,16 @@ describe('PseClient', () => {
       })
 
       await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({
-        code: 'http_error',
+        code: 'retry_limit_exceeded',
         status: 503,
       })
       expect(fetchImpl).toHaveBeenCalledTimes(3)
       expect(sleepCalls).toEqual([10, 20])
+    })
+
+    it('rejects non-positive or infinite attempt limits', () => {
+      expect(() => new PseClient({ maxAttempts: 0 })).toThrow(expect.objectContaining({ code: 'invalid_response' }))
+      expect(() => new PseClient({ maxAttempts: Infinity })).toThrow(expect.objectContaining({ code: 'invalid_response' }))
     })
 
     it('does not retry a non-retryable 4xx response such as the $top 400', async () => {
@@ -176,6 +227,64 @@ describe('PseClient', () => {
       await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toBeInstanceOf(PseClientError)
       await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'retry_limit_exceeded' })
       expect(fetchImpl).toHaveBeenCalledTimes(4)
+    })
+  })
+
+  describe('response limits and parsing', () => {
+    it('rejects a response that exceeds the declared content length', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: (name: string) => name === 'content-length' ? '11' : null },
+        json: async () => ({ ok: true }),
+      })
+      const client = new PseClient({ fetchImpl, maxResponseBytes: 10, sleep: noopSleep })
+
+      await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'invalid_response' })
+    })
+
+    it('rejects a streamed response after the byte cap is crossed', async () => {
+      const chunks = [new TextEncoder().encode('{"ok":'), new TextEncoder().encode('true}')]
+      const fetchImpl = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        body: { getReader: () => ({ read: jest.fn()
+          .mockResolvedValueOnce({ done: false, value: chunks[0] })
+          .mockResolvedValueOnce({ done: false, value: chunks[1] })
+          .mockResolvedValueOnce({ done: true }) }) },
+        json: async () => ({ ok: true }),
+      })
+      const client = new PseClient({ fetchImpl, maxResponseBytes: 5, sleep: noopSleep })
+
+      await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'invalid_response' })
+    })
+
+    it('applies the request timeout while reading a hanging response body', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        body: { getReader: () => ({ read: () => new Promise(() => {}) }) },
+        json: async () => ({}),
+      })
+      const client = new PseClient({ fetchImpl, timeoutMs: 5, maxAttempts: 1, sleep: noopSleep })
+
+      await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'timeout' })
+    })
+
+    it('treats malformed JSON as a terminal invalid_response', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => '{not-json}',
+        json: async () => { throw new Error('should not be called') },
+      })
+      const client = new PseClient({ fetchImpl, maxAttempts: 3, sleep: noopSleep })
+
+      await expect(client.get({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'invalid_response' })
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
     })
   })
 })
