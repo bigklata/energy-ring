@@ -4490,6 +4490,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@open-mercato/web-research@npm:0.7.1-develop.7202.1.a52dc6707c":
+  version: 0.7.1-develop.7202.1.a52dc6707c
+  resolution: "@open-mercato/web-research@npm:0.7.1-develop.7202.1.a52dc6707c"
+  dependencies:
+    zod: "npm:^4.4.3"
+  checksum: 10c0/55c21b42428b852862590871f68fb6dee3e58a46952ab2e10b661fafe3831340749f6288c8c2f7c79b70b707b7ae2bb65abd1a56cc4990a741750fe1fff1fe60
+  languageName: node
+  linkType: hard
+
 "@open-mercato/webhooks@npm:0.7.1-develop.7202.1.a52dc6707c":
   version: 0.7.1-develop.7202.1.a52dc6707c
   resolution: "@open-mercato/webhooks@npm:0.7.1-develop.7202.1.a52dc6707c"
@@ -21706,6 +21715,7 @@ __metadata:
     "@open-mercato/telemetry": "npm:0.7.1-develop.7202.1.a52dc6707c"
     "@open-mercato/tillio": "npm:0.7.1-develop.7202.1.a52dc6707c"
     "@open-mercato/ui": "npm:0.7.1-develop.7202.1.a52dc6707c"
+    "@open-mercato/web-research": "npm:0.7.1-develop.7202.1.a52dc6707c"
     "@open-mercato/webhooks": "npm:0.7.1-develop.7202.1.a52dc6707c"
     "@playwright/test": "npm:^1.58.2"
     "@radix-ui/react-checkbox": "npm:^1.3.11"
