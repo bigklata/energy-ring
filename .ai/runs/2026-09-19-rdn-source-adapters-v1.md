@@ -35,10 +35,10 @@ This is a pure parsing and contract slice. It does not persist `RdnImportPoint`,
 
 ### Phase 1: Pure provider rows
 
-- [x] 1.1 Parse PSE target, load, and hourly forecast rows — ded7b76
-- [x] 1.2 Cover null, negative, revision, and DST rows offline — ded7b76
+- [x] 1.1 Parse PSE target, load, and hourly forecast rows — 59a83ac, 1a96edb
+- [x] 1.2 Cover null, negative, revision, and DST rows offline — 59a83ac, 1a96edb
 
 ### Phase 2: Approved method v1
 
-- [x] 2.1 Update versioned method and unit evidence — e814fb3
-- [x] 2.2 Carry MW and validate Warsaw business dates in the adapters — f4fb636
+- [x] 2.1 Update versioned method and unit evidence — b753206
+- [x] 2.2 Carry MW and validate Warsaw business dates in the adapters — b753206
