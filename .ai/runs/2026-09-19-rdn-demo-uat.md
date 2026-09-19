@@ -1,6 +1,6 @@
 # RDN demo and UAT preparation (#40, #43, #45)
 
-**Status:** in-progress
+**Status:** complete
 **Source doc:** `.ai/specs/2026-09-19-rdn-forecast-mvp.md`
 
 ## Goal
@@ -36,10 +36,10 @@ RDN runtime, panel, and API remain incomplete. These documents are preparation o
 
 ### Phase 1: Host and replay guide
 
-- [ ] 1.1 Document clean-clone host setup and replay prerequisites
-- [ ] 1.2 Make replay provenance and incomplete-flow status explicit
+- [x] 1.1 Document clean-clone host setup and replay prerequisites — 452b9a3
+- [x] 1.2 Make replay provenance and incomplete-flow status explicit — 452b9a3
 
 ### Phase 2: Independent acceptance guide
 
-- [ ] 2.1 Document independent live UAT evidence and time windows
-- [ ] 2.2 Document final rehearsal, cuts, and blockers
+- [x] 2.1 Document independent live UAT evidence and time windows — 452b9a3
+- [x] 2.2 Document final rehearsal, cuts, and blockers — 452b9a3
