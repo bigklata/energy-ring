@@ -1,6 +1,6 @@
 # RDN source adapters and DST method v1 (#24, #25)
 
-**Status:** in-progress
+**Status:** complete
 **Source doc:** `.ai/specs/2026-09-19-rdn-forecast-mvp-technical-contracts.md`
 
 ## Goal
@@ -35,10 +35,10 @@ This is a pure parsing and contract slice. It does not persist `RdnImportPoint`,
 
 ### Phase 1: Pure provider rows
 
-- [ ] 1.1 Parse PSE target, load, and hourly forecast rows
-- [ ] 1.2 Cover null, negative, revision, and DST rows offline
+- [x] 1.1 Parse PSE target, load, and hourly forecast rows — ded7b76
+- [x] 1.2 Cover null, negative, revision, and DST rows offline — ded7b76
 
 ### Phase 2: Approved method v1
 
-- [ ] 2.1 Update versioned method and unit evidence
-- [ ] 2.2 Carry MW and validate Warsaw business dates in the adapters
+- [x] 2.1 Update versioned method and unit evidence — e814fb3
+- [x] 2.2 Carry MW and validate Warsaw business dates in the adapters — f4fb636
