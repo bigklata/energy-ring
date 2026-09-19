@@ -115,7 +115,7 @@ teardownie i nie korzysta z danych zasianych.
   echo "## db:migrate na czystej bazie ($VERIFY_DB) — exit=$MIGRATE_EXIT"
   grep -E "migrations? applied" /tmp/verify-migrate.log \
     | awk '{ m++; s += $2 } END { print "modules=" m+0 ", migrations applied=" s+0 }'
-  grep -E "^ *($(ls src/modules | paste -sd'|' -)): " /tmp/verify-migrate.log
+  grep -E "^ *($(ls src/modules | paste -sd'|' -)): [0-9]+ migrations? applied|^ *($(ls src/modules | paste -sd'|' -)): no pending" /tmp/verify-migrate.log
   grep -E "Failed|Error" /tmp/verify-migrate.log
   echo "## test:integration:ephemeral — exit=$INT_EXIT"
   grep -E "^Running [0-9]+ tests? |^ +[0-9]+ (passed|failed|flaky|skipped|interrupted|did not run)|No tests found|Failed:" /tmp/verify-int.log
