@@ -52,7 +52,7 @@
       "risk-high"
     ]
   },
-  "qaGate": false,
+  "qaGate": true,
   "reviewChecklist": ".ai/review-checklist.md",
   "paths": {
     "runs": ".ai/runs",
