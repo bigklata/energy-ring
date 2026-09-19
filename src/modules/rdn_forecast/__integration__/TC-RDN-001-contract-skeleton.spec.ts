@@ -53,7 +53,7 @@ const validRun = {
   deliveryDate: '2026-09-21',
   inputBatchIds: [FIXTURE_BATCH_ID],
   cutoffUtc: '2026-09-20T13:30:00Z',
-  methodVersion: 'baseline-correction.v0',
+  methodVersion: 'baseline-correction.v1',
   mode: 'replay',
   idempotencyKey: 'tc-rdn-001-run',
 }
@@ -95,7 +95,7 @@ test.describe('TC-RDN-001: rdn_forecast contract skeleton', () => {
       })
 
       const runs = await readJsonSafe<ListBody>(await apiRequest(request, 'GET', `${BASE}/runs`, { token: fixture.token }))
-      expect(runs?.items?.[0]).toMatchObject({ id: FIXTURE_RUN_ID, mode: 'replay', methodVersion: 'baseline-correction.v0' })
+      expect(runs?.items?.[0]).toMatchObject({ id: FIXTURE_RUN_ID, mode: 'replay', methodVersion: 'baseline-correction.v1' })
 
       const evaluations = await readJsonSafe<ListBody>(await apiRequest(request, 'GET', `${BASE}/evaluations`, { token: fixture.token }))
       expect(evaluations?.items?.length).toBe(2)
