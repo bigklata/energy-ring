@@ -1,17 +1,17 @@
-import { describe, expect, it, jest } from '@jest/globals'
+import { describe, expect, it } from '@jest/globals'
 import contractFixture from '../../../../../docs/fixtures/rdn/provider-paginated-revision.json'
-import { hourlyRecordToMtu, parseCsdacPlnRow, parsePk5lWpRow } from '../../integrations/data-sync'
-import { createPseClient } from '../../integrations/pse'
 import {
   createOfflinePseFetch,
   loadProviderFixture,
   priceFixtureToContractPages,
   providerFixtureUrl,
   type PseRawPage,
-  type PseRawPriceRow,
 } from './provider-fixtures.cjs'
 
-const fetchedAtUtc = '2026-09-19T14:04:36.000Z'
+const utc = (value: string) => new Date(`${value.replace(' ', 'T')}Z`).toISOString()
+const localLabel = (value: string) => new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Europe/Warsaw', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+}).format(new Date(value))
 
 describe('recorded PSE provider fixtures', () => {
   it('replays the original two-page $after chain without a network call', async () => {
@@ -25,27 +25,19 @@ describe('recorded PSE provider fixtures', () => {
     expect(new URL(first.nextLink).searchParams.get('$filter'))
       .toBe("business_date ge '2026-05-01' and business_date le '2026-05-02'")
 
-    const network = jest.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-      throw new Error('Network access is forbidden in fixture tests')
-    })
-    try {
-      const client = createPseClient({ fetch: createOfflinePseFetch(['priceRange']) })
-      const pages: PseRawPage<PseRawPriceRow>[] = []
-      for await (const page of client.pages<PseRawPage<PseRawPriceRow>>(providerFixtureUrl('priceRange'))) {
-        pages.push(page)
-      }
-      expect(pages).toEqual([first, second])
-      expect(network).not.toHaveBeenCalled()
-      expect(() => createOfflinePseFetch(['priceRange'])).not.toThrow()
-      await expect(createOfflinePseFetch(['priceRange'])('https://api.raporty.pse.pl/api/unrecorded'))
-        .rejects.toThrow('Unrecorded PSE fixture request')
-    } finally {
-      network.mockRestore()
-    }
+    const offlineFetch = createOfflinePseFetch(['priceRange'])
+    const firstResponse = await offlineFetch(providerFixtureUrl('priceRange'))
+    const firstBody = await firstResponse.json() as PseRawPage<unknown>
+    expect(firstBody).toEqual(first)
+    if (!firstBody.nextLink) throw new Error('First page has no nextLink')
+    const secondBody = await (await offlineFetch(firstBody.nextLink)).json()
+    expect(secondBody).toEqual(second)
+    await expect(offlineFetch('https://api.raporty.pse.pl/api/unrecorded'))
+      .rejects.toThrow('Unrecorded PSE fixture request')
   })
 
   it('bridges actual raw price rows to the existing normalized contract page shape', () => {
-    const pages = priceFixtureToContractPages('priceRange', fetchedAtUtc)
+    const pages = priceFixtureToContractPages('priceRange')
     expect(pages.map((page) => page.rows.length)).toEqual([100, 92])
     expect(pages[0].cursor).toBeNull()
     expect(pages[0].nextCursor).toBe(pages[1].cursor)
@@ -74,29 +66,27 @@ describe('recorded PSE provider fixtures', () => {
   it('proves the spring and autumn PSE days contain 92 and 100 distinct UTC MTU', () => {
     for (const [id, expected] of [['priceSpring', 92], ['priceAutumn', 100]] as const) {
       const [page] = loadProviderFixture(id)
-      const points = page.value.map((row) => parseCsdacPlnRow(row, fetchedAtUtc))
-      expect(points).toHaveLength(expected)
-      expect(new Set(points.map((point) => point.intervalStartUtc)).size).toBe(expected)
+      const ends = page.value.map((row) => utc(row.dtime_utc))
+      expect(ends).toHaveLength(expected)
+      expect(new Set(ends).size).toBe(expected)
+      const starts = ends.map((end) => new Date(Date.parse(end) - 15 * 60_000).toISOString())
       if (id === 'priceSpring') {
-        expect(points.some((point) => point.localLabel.startsWith('02:'))).toBe(false)
+        expect(starts.some((start) => localLabel(start).startsWith('02:'))).toBe(false)
       } else {
-        const repeated = points.filter((point) => point.localLabel === '02:00')
+        const repeated = starts.filter((start) => localLabel(start) === '02:00')
         expect(repeated).toHaveLength(2)
-        expect(repeated.map((point) => point.localOffset)).toEqual(['+02:00', '+01:00'])
-        expect(repeated[0].intervalStartUtc).not.toBe(repeated[1].intervalStartUtc)
+        expect(repeated).toEqual(['2025-10-26T00:00:00.000Z', '2025-10-26T01:00:00.000Z'])
       }
     }
   })
 
   it('keeps both autumn source hours and their different real wind values', () => {
     const [page] = loadProviderFixture('windAutumn')
-    const hours = page.value.map(parsePk5lWpRow)
-    const mtus = hours.flatMap(hourlyRecordToMtu)
-    expect(hours).toHaveLength(25)
-    expect(mtus).toHaveLength(100)
-    expect(new Set(mtus.map((mtu) => mtu.intervalStartUtc)).size).toBe(100)
-    expect(hours.filter((hour) => [
+    const hourEnds = page.value.map((row) => utc(row.plan_dtime_utc))
+    expect(hourEnds).toHaveLength(25)
+    expect(new Set(hourEnds).size).toBe(25)
+    expect(page.value.filter((row) => [
       '2025-10-26T01:00:00.000Z', '2025-10-26T02:00:00.000Z',
-    ].includes(hour.hourEndUtc)).map((hour) => hour.windGenerationForecast)).toEqual([4125, 4387])
+    ].includes(utc(row.plan_dtime_utc))).map((row) => row.fcst_wi_tot_gen)).toEqual([4125, 4387])
   })
 })

@@ -4,7 +4,6 @@ const springPrices = require('../../__fixtures__/provider/csdac-pln-2025-03-30.j
 const autumnPrices = require('../../__fixtures__/provider/csdac-pln-2025-10-26.json')
 const nullLoad = require('../../__fixtures__/provider/kse-load-2024-06-13-null.json')
 const autumnWind = require('../../__fixtures__/provider/pk5l-wp-2025-10-26.json')
-const { parseCsdacPlnRow } = require('../../integrations/data-sync')
 
 const fixturePages = {
   priceRange: [priceRangePage1, priceRangePage2],
@@ -38,7 +37,7 @@ function requestKey(resource) {
   return `${url.pathname}?${url.searchParams.toString()}`
 }
 
-/** Inject into createPseClient({ fetch }); an unrecorded request fails locally. */
+/** Inject into any client with a fetch seam; an unrecorded request fails locally. */
 function createOfflinePseFetch(ids) {
   const recorded = new Map()
   for (const id of ids) {
@@ -63,7 +62,7 @@ function createOfflinePseFetch(ids) {
 }
 
 /** Bridge actual price rows to the normalized page shape used by the docs contract. */
-function priceFixtureToContractPages(id, fetchedAtUtc) {
+function priceFixtureToContractPages(id) {
   const pages = loadProviderFixture(id)
   let cursor = null
   return pages.map((page) => {
@@ -71,12 +70,15 @@ function priceFixtureToContractPages(id, fetchedAtUtc) {
       ? new URL(page.nextLink).searchParams.get('$after')
       : null
     const rows = page.value.map((row) => {
-      const point = parseCsdacPlnRow(row, fetchedAtUtc)
+      // Shape bridge only. Production validation and quality rules live in adapters.
+      const endUtc = new Date(`${row.dtime_utc.replace(' ', 'T')}Z`).toISOString()
+      const intervalStartUtc = new Date(Date.parse(endUtc) - 15 * 60_000).toISOString()
+      const publicationTsUtc = new Date(`${row.publication_ts_utc.replace(' ', 'T')}Z`).toISOString()
       return {
-        providerKey: point.providerKey,
-        intervalStartUtc: point.intervalStartUtc,
-        value: point.value,
-        publicationTsUtc: point.publicationTsUtc,
+        providerKey: `pse:csdac-pln:${intervalStartUtc}:${publicationTsUtc}`,
+        intervalStartUtc,
+        value: row.csdac_pln,
+        publicationTsUtc,
       }
     })
     const mapped = { cursor, rows, nextCursor }

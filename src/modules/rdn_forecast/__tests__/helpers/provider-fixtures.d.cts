@@ -63,5 +63,4 @@ export type ContractPricePage = {
 
 export function priceFixtureToContractPages(
   id: 'priceRange' | 'priceSpring' | 'priceAutumn',
-  fetchedAtUtc: string,
 ): ContractPricePage[]
