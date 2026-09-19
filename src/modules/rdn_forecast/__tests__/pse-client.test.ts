@@ -287,4 +287,56 @@ describe('PseClient', () => {
       expect(fetchImpl).toHaveBeenCalledTimes(1)
     })
   })
+
+  describe('cursor pagination', () => {
+    it('follows nextLink, retries a page, and removes an identical cross-page duplicate', async () => {
+      const pageTwoUrl = `${PSE_DEFAULT_BASE_URL}/csdac-pln?$after=page-2`
+      const responses = [
+        jsonResponse({
+          value: [{ id: 1 }, { id: 2 }],
+          nextLink: pageTwoUrl,
+        }),
+        jsonResponse({ error: 'temporary failure' }, 503),
+        jsonResponse({
+          value: [{ id: 2 }, { id: 3 }],
+          nextLink: null,
+        }),
+      ]
+      const fetchImpl = jest.fn(async () => responses.shift()!)
+      const sleepCalls: number[] = []
+      const client = new PseClient({
+        fetchImpl,
+        sleep: async (ms) => { sleepCalls.push(ms) },
+        baseDelayMs: 10,
+      })
+
+      const result = await client.getAll<{ id: number }>({ endpoint: 'csdac-pln' })
+
+      expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }])
+      expect(fetchImpl).toHaveBeenCalledTimes(3)
+      expect(fetchImpl.mock.calls[1][0]).toBe(pageTwoUrl)
+      expect(fetchImpl.mock.calls[2][0]).toBe(pageTwoUrl)
+      expect(sleepCalls).toEqual([10])
+    })
+
+    it('rejects a cursor that leaves the PSE HTTPS allowlist', async () => {
+      const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({
+        value: [{ id: 1 }],
+        nextLink: 'https://evil.example.com/api/csdac-pln?page=2',
+      }))
+      const client = new PseClient({ fetchImpl, sleep: noopSleep })
+
+      await expect(client.getAll({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'host_not_allowed' })
+      expect(fetchImpl).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects a repeated cursor instead of looping forever', async () => {
+      const cursor = `${PSE_DEFAULT_BASE_URL}/csdac-pln?$after=page-2`
+      const fetchImpl = jest.fn().mockResolvedValue(jsonResponse({ value: [], nextLink: cursor }))
+      const client = new PseClient({ fetchImpl, sleep: noopSleep })
+
+      await expect(client.getAll({ endpoint: 'csdac-pln' })).rejects.toMatchObject({ code: 'invalid_response' })
+      expect(fetchImpl).toHaveBeenCalledTimes(2)
+    })
+  })
 })

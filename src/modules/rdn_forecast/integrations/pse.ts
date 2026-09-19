@@ -64,6 +64,11 @@ export interface PseGetOptions {
   baseDelayMs?: number
 }
 
+export interface PsePage<T> {
+  value: T[]
+  nextLink?: string | null
+}
+
 function assertPositiveFinite(value: number, name: string): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new PseClientError(`${name} must be a positive finite number`, 'invalid_response')
@@ -174,6 +179,43 @@ function buildQuery(options: PseGetOptions): URLSearchParams {
   return search
 }
 
+function validateNextLink(value: unknown): URL | undefined {
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new PseClientError('PSE nextLink must be a non-empty URL or null', 'invalid_response')
+  }
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch (cause) {
+    throw new PseClientError('PSE nextLink is not a valid URL', 'invalid_response', { cause })
+  }
+  if (url.protocol !== 'https:' || url.hostname !== PSE_ALLOWED_HOST || url.port || url.username || url.password || !url.pathname.startsWith('/api/')) {
+    throw new PseClientError('PSE nextLink is outside the HTTPS allowlist', 'host_not_allowed')
+  }
+  return url
+}
+
+function parsePage<T>(value: unknown): PsePage<T> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new PseClientError('PSE page must be an object', 'invalid_response')
+  }
+  const page = value as { value?: unknown; nextLink?: unknown }
+  if (!Array.isArray(page.value)) {
+    throw new PseClientError('PSE page value must be an array', 'invalid_response')
+  }
+  if (page.nextLink !== undefined && page.nextLink !== null && typeof page.nextLink !== 'string') {
+    throw new PseClientError('PSE page nextLink must be a string or null', 'invalid_response')
+  }
+  return { value: page.value as T[], nextLink: page.nextLink as string | null | undefined }
+}
+
+function stableIdentity(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableIdentity).join(',')}]`
+  return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stableIdentity((value as Record<string, unknown>)[key])}`).join(',')}}`
+}
+
 export class PseClient {
   private readonly baseUrl: URL
   private readonly timeoutMs: number
@@ -206,6 +248,38 @@ export class PseClient {
     const maxAttempts = assertPositiveInteger(options.maxAttempts ?? this.maxAttempts, 'maxAttempts')
     const baseDelayMs = assertPositiveFinite(options.baseDelayMs ?? this.baseDelayMs, 'baseDelayMs')
     const timeoutMs = assertPositiveFinite(options.timeoutMs ?? this.timeoutMs, 'timeoutMs')
+    return this.request<T>(url, timeoutMs, maxAttempts, baseDelayMs)
+  }
+
+  /** Fetches every provider page, following only provider-issued allowlisted cursors. */
+  async getAll<T = unknown>(options: PseGetOptions): Promise<T[]> {
+    let cursor = this.buildUrl(options)
+    const maxAttempts = assertPositiveInteger(options.maxAttempts ?? this.maxAttempts, 'maxAttempts')
+    const baseDelayMs = assertPositiveFinite(options.baseDelayMs ?? this.baseDelayMs, 'baseDelayMs')
+    const timeoutMs = assertPositiveFinite(options.timeoutMs ?? this.timeoutMs, 'timeoutMs')
+    const seenCursors = new Set<string>()
+    const seenItems = new Set<string>()
+    const items: T[] = []
+
+    for (let pageNumber = 0; cursor; pageNumber += 1) {
+      if (pageNumber >= 10_000 || seenCursors.has(cursor.toString())) {
+        throw new PseClientError('PSE pagination cursor repeated or exceeded the page limit', 'invalid_response')
+      }
+      seenCursors.add(cursor.toString())
+      const page = parsePage<T>(await this.request<unknown>(cursor, timeoutMs, maxAttempts, baseDelayMs))
+      for (const item of page.value) {
+        const identity = stableIdentity(item)
+        if (!seenItems.has(identity)) {
+          seenItems.add(identity)
+          items.push(item)
+        }
+      }
+      cursor = validateNextLink(page.nextLink)
+    }
+    return items
+  }
+
+  private async request<T>(url: URL, timeoutMs: number, maxAttempts: number, baseDelayMs: number): Promise<T> {
     let lastError: PseClientError | undefined
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
