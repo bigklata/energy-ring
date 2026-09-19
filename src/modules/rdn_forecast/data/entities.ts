@@ -94,6 +94,10 @@ export class RdnSourceSeries {
   name: 'rdn_forecast_import_batches_revision_unique',
   properties: ['tenantId', 'organizationId', 'sourceSeriesId', 'deliveryDate', 'providerRevision'],
 })
+@Unique({
+  name: 'rdn_forecast_import_batches_idempotency_unique',
+  properties: ['tenantId', 'organizationId', 'idempotencyKey'],
+})
 @Index({ name: 'rdn_forecast_import_batches_status_idx', properties: ['tenantId', 'organizationId', 'status'] })
 export class RdnImportBatch {
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
@@ -114,6 +118,18 @@ export class RdnImportBatch {
   /** Non-null so the revision unique key cannot be bypassed by NULLs. */
   @Property({ name: 'provider_revision', type: 'text' })
   providerRevision!: string
+
+  /**
+   * Client key of the `rdn_forecast.import` command. A repeat with the same key
+   * and fingerprint returns this batch; the same key with a different
+   * fingerprint is rejected (409), never merged.
+   */
+  @Property({ name: 'idempotency_key', type: 'text' })
+  idempotencyKey!: string
+
+  /** SHA-256 hex of the canonical import command payload the key was first used with. */
+  @Property({ name: 'request_fingerprint', type: 'text' })
+  requestFingerprint!: string
 
   @Property({ type: 'text', default: 'received' })
   status: RdnImportBatchStatus = 'received'
@@ -312,7 +328,7 @@ export class RdnForecastPoint {
 @Entity({ tableName: 'rdn_forecast_evaluation_runs' })
 @Unique({
   name: 'rdn_forecast_evaluation_runs_target_unique',
-  properties: ['tenantId', 'organizationId', 'forecastRunId', 'targetBatchId'],
+  properties: ['tenantId', 'organizationId', 'forecastRunId', 'targetBatchId', 'windowStart', 'windowEnd'],
 })
 export class RdnEvaluationRun {
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
