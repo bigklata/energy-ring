@@ -57,35 +57,89 @@ W każdym sandboxie utworzyć jedną automatyzację z poniższymi ustawieniami:
 | `task.variants` | `1` |
 
 Prompt do **New task**, z wyborem `create-cezar-automation`, jeśli dostępny.
-Dominik używa poniższej pierwszej linii; Grzegorz zamienia ją na
-`Mój identyfikator: worker:grzegorz`, Marek na `Mój identyfikator: worker:marek`.
+Poniżej są trzy kompletne wersje do wklejenia. Każda osoba wkleja tylko swoją
+wersję w swoim sandboxie. Nie zamieniać etykiety workera między sandboxami.
+
+### Dominik — sandbox `8afc4f45`
 
 ```text
-Mój identyfikator: worker:dominik
+Skonfiguruj w tym projekcie Cezara automatyzację GitHub dla bigklata/energy-ring.
+Mój worker: worker:dominik. Ten sandbox: 8afc4f45-40db-4875-8a85-a30ff0b306c3.
 
-Przygotuj automatyzację dla bigklata/energy-ring zgodnie z sekcją
-„Automatyczny przydział przez etykiety GitHub” w docs/team-workflow.md.
-Sprawdź wersję Cezara i schema; użyj mojego worker w allLabels,
-a dwóch pozostałych w excludeLabels. Nie twórz drugiej automatyzacji,
-jeżeli istnieje już równoważna definicja dla mojego workera.
+Utwórz jedną definicję automatyzacji, paused:
+kind=github; events=["issue.labeled"]; intervalSeconds=60;
+filters.changedLabels=["ready"];
+filters.allLabels=["worker:dominik","ready"];
+filters.excludeLabels=["blocked","in-progress","worker:grzegorz","worker:marek"];
+task.worktree=true; task.autonomous=true; task.variants=1.
 
-Instrukcja dla zadania wyzwalanego przez Issue:
-- Przeczytaj AGENTS.md, .ai/agentic.config.json i wskazane Issue.
-- Ponownie sprawdź właściciela, ready, blokady, zależności, claim i PR.
-  Pomiń zadanie zajęte, zablokowane lub należące do innego workera.
-  Istniejący PR zgłoś zamiast tworzyć konkurencyjną implementację.
-- Zastosuj repozytoryjny protokół claim; komentarz identyfikuje
-  workera, sandbox i run. Dodaj in-progress i usuń ready.
-- Wykonaj wyłącznie zatwierdzony zakres przez zainstalowany
-  om-auto-create-pr i lokalne overrides w worktree tego zadania.
-- Wykonaj wymagane kontrole. PR powiąż przez Fixes #numer.
-  Przestrzegaj zgód wymaganych przez AGENTS.md, w tym przed push.
-- Po publikacji przekaż PR do review i zwolnij claim zgodnie
-  z protokołem. Nie przywracaj ready i nie wykonuj merge.
-- Przy blokadzie zapisz przyczynę w Issue i ustaw blocked.
+Nie twórz drugiej równoważnej automatyzacji. Uruchamiaj tylko Issue z worker:dominik
+i ready. Przed startem sprawdź AGENTS.md, .ai/agentic.config.json, zależności,
+assignee, claim, blokady i istniejący PR. Jeśli Issue jest blocked, in-progress,
+ma innego workera albo ma już PR, zakończ bez duplikowania pracy.
+Po claim dodaj in-progress, usuń ready i zostaw komentarz z workerem, sandboxem
+i runem. Wykonuj wyłącznie zakres Issue w osobnym worktree przez zainstalowany
+om-auto-create-pr oraz lokalne overrides. Uruchom walidację i przygotuj PR z Fixes
+#NUMER. Nie wykonuj merge. Przy blokadzie opisz przyczynę i ustaw blocked.
+Push wymaga potwierdzenia zgodnie z AGENTS.md.
 
-Utwórz definicję paused, wykonaj cez automation check i pokaż podgląd
-oraz link do włączenia. Jeśli brakuje obsługi, wskaż konkretny brak.
+Wykonaj `cez automation check`, pokaż wynik i link do włączenia automatyzacji.
+Nie włączaj jej bez mojego potwierdzenia.
+```
+
+### Grzegorz — sandbox `0d04cacd`
+
+```text
+Skonfiguruj w tym projekcie Cezara automatyzację GitHub dla bigklata/energy-ring.
+Mój worker: worker:grzegorz. Ten sandbox: 0d04cacd-2602-4917-9868-c303281df8c5.
+
+Utwórz jedną definicję automatyzacji, paused:
+kind=github; events=["issue.labeled"]; intervalSeconds=60;
+filters.changedLabels=["ready"];
+filters.allLabels=["worker:grzegorz","ready"];
+filters.excludeLabels=["blocked","in-progress","worker:dominik","worker:marek"];
+task.worktree=true; task.autonomous=true; task.variants=1.
+
+Nie twórz drugiej równoważnej automatyzacji. Uruchamiaj tylko Issue z worker:grzegorz
+i ready. Przed startem sprawdź AGENTS.md, .ai/agentic.config.json, zależności,
+assignee, claim, blokady i istniejący PR. Jeśli Issue jest blocked, in-progress,
+ma innego workera albo ma już PR, zakończ bez duplikowania pracy.
+Po claim dodaj in-progress, usuń ready i zostaw komentarz z workerem, sandboxem
+i runem. Wykonuj wyłącznie zakres Issue w osobnym worktree przez zainstalowany
+om-auto-create-pr oraz lokalne overrides. Uruchom walidację i przygotuj PR z Fixes
+#NUMER. Nie wykonuj merge. Przy blokadzie opisz przyczynę i ustaw blocked.
+Push wymaga potwierdzenia zgodnie z AGENTS.md.
+
+Wykonaj `cez automation check`, pokaż wynik i link do włączenia automatyzacji.
+Nie włączaj jej bez mojego potwierdzenia.
+```
+
+### Marek — sandbox `747c69d5`
+
+```text
+Skonfiguruj w tym projekcie Cezara automatyzację GitHub dla bigklata/energy-ring.
+Mój worker: worker:marek. Ten sandbox: 747c69d5-fc44-4d25-9fc8-68f3015b676c.
+
+Utwórz jedną definicję automatyzacji, paused:
+kind=github; events=["issue.labeled"]; intervalSeconds=60;
+filters.changedLabels=["ready"];
+filters.allLabels=["worker:marek","ready"];
+filters.excludeLabels=["blocked","in-progress","worker:dominik","worker:grzegorz"];
+task.worktree=true; task.autonomous=true; task.variants=1.
+
+Nie twórz drugiej równoważnej automatyzacji. Uruchamiaj tylko Issue z worker:marek
+i ready. Przed startem sprawdź AGENTS.md, .ai/agentic.config.json, zależności,
+assignee, claim, blokady i istniejący PR. Jeśli Issue jest blocked, in-progress,
+ma innego workera albo ma już PR, zakończ bez duplikowania pracy.
+Po claim dodaj in-progress, usuń ready i zostaw komentarz z workerem, sandboxem
+i runem. Wykonuj wyłącznie zakres Issue w osobnym worktree przez zainstalowany
+om-auto-create-pr oraz lokalne overrides. #7 ma pierwszeństwo przed #8; nie uruchamiaj
+tych dwóch Issues równocześnie. Uruchom walidację i przygotuj PR z Fixes #NUMER.
+Nie wykonuj merge. Przy blokadzie opisz przyczynę i ustaw blocked.
+Push wymaga potwierdzenia zgodnie z AGENTS.md.
+
+Wykonaj `cez automation check`, pokaż wynik i link do włączenia automatyzacji.
+Nie włączaj jej bez mojego potwierdzenia.
 ```
 
 Po podglądzie operator włącza automatyzację w **Automations**. Cezar musi działać.
