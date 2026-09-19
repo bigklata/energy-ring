@@ -111,24 +111,17 @@ prywatnego repo zależy od planu GitHub.
 
 ## Warunek rozpoczęcia równoległej implementacji
 
-W dokumentacji istnieją rozbieżne założenia:
+2026-09-19 użytkownik wybrał **MVP prognozy RDN**: import PSE → kontrola jakości → korekta baseline’u → porównanie z opublikowanymi cenami. Bez tradingu, portfela i treningu ML. Decyzja jest zapisana w [issue #2](https://github.com/bigklata/energy-ring/issues/2), a projekt rozwija [robocza specyfikacja](../.ai/specs/2026-09-19-rdn-forecast-mvp.md).
 
-- [CONTEXT.md](../CONTEXT.md): PSE, reguły i backtest, ML później,
-  automatyczny trading demo na kontraktach z limitami ryzyka.
-- [docs-grzegorz/product-brief.md](../docs-grzegorz/product-brief.md): wiele
-  źródeł danych, prognozy ML i symulowany portfel, bez automatycznego składania
-  zleceń; rynek terminowy poza MVP.
-
-Ten dokument nie rozstrzyga, która wizja obowiązuje. Pierwsze wspólne Issue:
-**„Uzgodnić zakres MVP, strukturę modułów i kontrakty danych”**.
+`CONTEXT.md` i `docs-grzegorz/product-brief.md` zachowują historyczne alternatywy. `docs-marek/` jest materiałem wejściowym, nie automatycznie zatwierdzonym kontraktem technicznym. Weryfikacja źródeł (#6, część A) może rozpocząć się przed kontraktami #3. Kod importu (#6 B), analiz (#7) i UI (#8) wymaga uzgodnionych kontraktów oraz wspólnego szkieletu #4/#5. Praca w fazie importu obejmuje od razu jego UI; kolejna faza dostarcza prognozę i ocenę z ich UI.
 
 Kolejność uruchomienia pracy:
 
-1. Uzgodnić jedną wersję MVP i wskazać obowiązujące dokumenty.
+1. Utrwalić zatwierdzony zakres prognozy RDN i wskazać obowiązujące dokumenty (#2).
 2. Ustalić moduły, właścicieli, kontrakty danych i zależności zadań.
 3. Przygotować wspólny szkielet Open Mercato i podstawowe CI w jednym PR.
 4. Scalić szkielet do `main`, a następnie zaktualizować trzy sandboxy.
-5. Rozpocząć równoległą pracę nad danymi, analizami i UI.
+5. Dostarczyć import razem z jego UI, potem prognozę/ocenę razem z ich UI; równoległość ograniczyć do niezależnych prac wewnątrz aktualnej fazy.
 
 ## Źródła
 
