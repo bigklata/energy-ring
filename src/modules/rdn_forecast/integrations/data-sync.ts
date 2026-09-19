@@ -66,9 +66,13 @@ function businessDate(value: unknown): string {
 function utcTimestamp(value: unknown, field: string): string {
   if (typeof value !== 'string') throw new PseInputRowError(field)
   // PSE's *_utc fields may use a space separator and omit Z; both represent UTC.
-  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,3}))?Z?$/.exec(value)
+  const match = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?Z?$/.exec(value)
   if (!match) throw new PseInputRowError(field)
-  const canonical = `${match[1]}T${match[2]}.${(match[3] ?? '').padEnd(3, '0')}Z`
+  const fractional = (match[3] ?? '').padEnd(3, '0')
+  // Date stores milliseconds. PSE sends six digits such as .702000; reject
+  // meaningful microseconds rather than silently moving a cutoff boundary.
+  if (fractional.slice(3).replace(/0/g, '') !== '') throw new PseInputRowError(field)
+  const canonical = `${match[1]}T${match[2]}.${fractional.slice(0, 3)}Z`
   const parsed = new Date(canonical)
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== canonical) {
     throw new PseInputRowError(field)

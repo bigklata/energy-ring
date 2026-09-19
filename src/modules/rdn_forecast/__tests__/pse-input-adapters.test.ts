@@ -51,6 +51,8 @@ describe('PSE input row adapters', () => {
     })
     expect(parseKseLoadRow({ ...kseRow, load_fcst: null, load_actual: 17800 }))
       .toMatchObject({ loadForecast: null, loadActual: 17800 })
+    expect(parseKseLoadRow({ ...kseRow, publication_ts_utc: '2024-06-15 17:36:32.702000' }))
+      .toMatchObject({ publicationTsUtc: '2024-06-15T17:36:32.702Z' })
   })
 
   it('parses a MW pk5l-wp hour ending in UTC without filling missing values', () => {
@@ -128,5 +130,7 @@ describe('PSE input row adapters', () => {
     expect(() => parsePk5lWpRow({ ...pkRow, business_date: '2026-09-20' })).toThrow(PseInputRowError)
     expect(() => parsePk5lWpRow({ ...pkRow, fcst_pv_tot_gen: Infinity })).toThrow(PseInputRowError)
     expect(() => parsePk5lWpRow({ ...pkRow, publication_ts_utc: null })).toThrow(PseInputRowError)
+    expect(() => parseKseLoadRow({ ...kseRow, publication_ts_utc: '2024-06-15 17:36:32.702001' }))
+      .toThrow(PseInputRowError)
   })
 })
