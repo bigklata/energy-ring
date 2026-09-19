@@ -206,18 +206,51 @@ instancjami Cezara. Przed uruchomieniem zadania trzeba sprawdzić jego właścic
 i status na GitHubie. Samo lokalne uruchomienie agenta nie zapewnia widoczności
 pracy w repozytorium.
 
-## Cykl pojedynczego zadania
+## Cykl pojedynczego zadania: pięć faz
 
-1. Przypisać Issue do jednej osoby i jej `worker:*`; po spełnieniu zależności dodać `ready`.
-2. Sprawdzić zależności oraz aktualność lokalnego `main`. Czysty checkout `main`
-   można zaktualizować przez `git pull --ff-only`; lokalne zmiany wymagają
-   wcześniejszego uporządkowania bez ich utraty.
-3. Automatyzacja uruchamia Issue w osobnym worktree i branchu; claim ustawia `in-progress`.
-4. Po pierwszych zmianach opublikować draft PR, aby zakres pracy był widoczny.
-5. W opisie PR podać zakres zmian, testy i `Closes #NUMER_ISSUE`.
-6. Po zakończeniu implementacji ustawić `Review`; druga osoba sprawdza PR.
-7. Po przejściu CI i review scalić PR do `main`. Powiązane Issue zamyka się
-   automatycznie, jeśli `main` jest domyślną gałęzią repozytorium.
+Każde zadanie — wykonywane ręcznie albo przez automatyzację Cezara — przechodzi
+te same pięć faz. To jest rozwinięcie skróconego cyklu z sekcji wyżej, nie
+osobny proces: automatyzacja realizuje fazy 3–5 w jednym uruchomieniu, a fazy
+1–2 zależą od bramki `spec-first`/`direct`/`reuse-spec` z
+`.ai/guides/spec-delivery.md` (patrz też `workflow-analysis-mvp-20h.md`, sekcja 4).
+
+1. **Analiza.** Przypisać Issue do jednej osoby i jej `worker:*`. Nowa
+   funkcja/kontrakt/schemat/API/zmiana cross-module wymaga zatrzymania się i
+   przygotowania specyfikacji w `.ai/specs/` przez `om-spec-writing`
+   (`spec-first`). Bug fix, mała poprawka, dokumentacja albo izolowany
+   refaktor przechodzą bez spec (`direct`) — decyzję zanotować w komentarzu do
+   Issue, żeby drugi reviewer widział, czy spec był wymagany. Dowód
+   zakończenia fazy: zatwierdzona specyfikacja w PR albo jawna notatka
+   „direct”.
+2. **Plan.** Rozbić Issue na fazy implementacji zgodnie z „Implementation
+   phase gate” ze `spec-delivery.md`; potwierdzić zakres plików, zależności i
+   kryteria odbioru z Definition of Ready (patrz wyżej). Sprawdzić zależności
+   oraz aktualność lokalnego `main` (czysty checkout aktualizować przez
+   `git pull --ff-only`; lokalne zmiany uporządkować bez ich utraty). Po
+   spełnieniu zależności dodać `ready`. Dowód: krótki plan w opisie Issue/PR
+   albo w `.ai/runs/<task>/`.
+3. **Development.** Automatyzacja uruchamia Issue w osobnym worktree i
+   branchu; claim ustawia `in-progress`. Implementacja przez
+   `om-implement-spec` (lokalne fazy) albo `om-auto-create-pr` (małe
+   zatwierdzone zadanie) — nigdy oba naraz dla tej samej pracy. Po pierwszych
+   zmianach opublikować draft PR, aby zakres pracy był widoczny.
+4. **Testy.** Przed oznaczeniem `Review` uruchomić pełny gate repo:
+   `yarn generate && yarn typecheck && yarn lint && yarn ds:check && yarn test && yarn build`;
+   dla zmian integracyjnych/cross-seam dodać `yarn test:integration:ephemeral`
+   przez `om-integration-tests`. Nie deklarować PASS dla nieuruchomionych
+   komend. Jeśli `.ai/agentic.config.json` ma `qaGate: true`, dodać `needs-qa`
+   i nie usuwać jej samodzielnie — QA scenariusza wykonuje druga osoba, nie
+   autor PR.
+5. **Dokumentacja.** W opisie PR podać zakres zmian, listę uruchomionych
+   testów/komend i `Closes #NUMER_ISSUE`; zaktualizować `docs/` lub
+   `.ai/specs/`, jeśli zmiana zmienia ustalony kontrakt lub proces. Ustawić
+   `Review`; druga osoba sprawdza PR. Po przejściu CI i review scalić PR do
+   `main`. Powiązane Issue zamyka się automatycznie, jeśli `main` jest
+   domyślną gałęzią repozytorium.
+
+Automatyzacja jednej osoby (`.ai/cezar/automations.json`, lokalna dla
+sandboxa, nieśledzona w git) powinna odzwierciedlać te pięć faz w treści
+`task.prompt`; każdy z trójki aktualizuje własną automatyzację niezależnie.
 
 Push i inne ryzykowne operacje wykonywane przez agenta wymagają potwierdzenia
 zgodnie z instrukcjami użytkownika. Ten dokument nie jest takim potwierdzeniem.
