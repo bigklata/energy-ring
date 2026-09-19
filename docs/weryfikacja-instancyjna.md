@@ -29,18 +29,24 @@ grep -E '^(DATABASE_URL|JWT_SECRET|AUTH_SECRET)=' .env | sed -E 's/=.*/=<ustawio
   odmawia startu. Jednorazowa podmiana na losowe wartości, bez wypisywania ich:
 
 ```bash
-for k in JWT_SECRET AUTH_SECRET NEXTAUTH_SECRET; do
-  v=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')
-  if grep -q "^$k=" .env; then sed -i.bak "s|^$k=.*|$k=$v|" .env; else echo "$k=$v" >> .env; fi
-done
-rm -f .env.bak
+node -e '
+const fs = require("fs"); const crypto = require("crypto");
+const example = fs.readFileSync(".env.example", "utf8"); let env = fs.readFileSync(".env", "utf8");
+for (const key of ["JWT_SECRET", "AUTH_SECRET", "NEXTAUTH_SECRET"]) {
+  const current = env.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1];
+  const placeholder = example.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1];
+  if (current === undefined || current === placeholder) env = current === undefined ? `${env}\n${key}=${crypto.randomBytes(32).toString("hex")}\n` : env.replace(new RegExp(`^${key}=.*$`, "m"), `${key}=${crypto.randomBytes(32).toString("hex")}`);
+}
+fs.writeFileSync(".env", env);
+'
 ```
 
 ## 1. Checkout na właściwym commicie
 
 ```bash
 git status --short            # ma być pusto (poza plikami, o których wiesz, że nie są w PR)
-git switch <twoj-branch> && git pull --ff-only
+export VERIFY_BRANCH="${VERIFY_BRANCH:?ustaw nazwe galezi PR}"
+git switch "$VERIFY_BRANCH" && git pull --ff-only
 yarn install
 yarn generate
 export VERIFY_SHA="$(git rev-parse HEAD)"; echo "$VERIFY_SHA"
@@ -54,10 +60,11 @@ Nie migrujemy bazy, na której pracuje sandbox. Tworzymy nową, pustą bazę obo
 niej (ten sam serwer z `DATABASE_URL`, inna nazwa):
 
 ```bash
+set -euo pipefail
 export VERIFY_DB="om_verify_$(date +%Y%m%d%H%M%S)"
-export VERIFY_URL="$(node --env-file=.env -e '
+VERIFY_URL="$(env -u DATABASE_URL node --env-file=.env -e '
 const { Client } = require("pg");
-const url = new URL(process.env.DATABASE_URL);
+const url = new URL(process.env.VERIFY_BASE_URL ?? process.env.DATABASE_URL);
 const db = process.env.VERIFY_DB;
 (async () => {
   const c = new Client({ connectionString: url.toString() });
@@ -68,7 +75,10 @@ const db = process.env.VERIFY_DB;
   console.log(url.toString());
 })().catch((e) => { console.error(e.message); process.exit(1); });
 ')"
-test -n "$VERIFY_URL" && echo "czysta baza: $VERIFY_DB"
+test -n "$VERIFY_URL"
+test "$(node -e 'console.log(new URL(process.argv[1]).pathname.slice(1))' "$VERIFY_URL")" = "$VERIFY_DB"
+export VERIFY_URL
+echo "czysta baza: $VERIFY_DB"
 ```
 
 ## 3. Migracje na czystej bazie
@@ -176,8 +186,8 @@ docker ps --format '{{.Names}} {{.Image}}'   # nie powinno być kontenerów po e
 ```
 
 `testcontainers-ryuk-*` może być widoczny jeszcze przez kilkanaście sekund —
-to sprzątacz testcontainers, sam się wyłącza. Każdy inny kontener Postgresa po
-ephemeral (poza bazą sandboxa) usuń: `docker rm -f <nazwa>`.
+to sprzątacz testcontainers, sam się wyłącza. Usuwaj wyłącznie kontener
+`om-verify-pg`, jeśli został utworzony przez fallback z tego runbooka.
 
 ## Częste porażki
 
@@ -187,7 +197,7 @@ ephemeral (poza bazą sandboxa) usuń: `docker rm -f <nazwa>`.
 | `Refusing to run in production with an unsafe signing secret` / `Application process exited before readiness check` | `JWT_SECRET`/`AUTH_SECRET` z `.env.example` | Krok 0 — podmiana sekretów. |
 | `Node >= 24 required` przy `yarn install` | stary Node | `nvm install 24 && nvm use 24`. |
 | `Container runtime is unavailable` / `Docker CLI is not available` | brak Dockera | Uruchom Docker (na macOS np. `colima start`) i powtórz krok 4. |
-| `CREATE DATABASE` → `permission denied` | użytkownik z `DATABASE_URL` nie ma `CREATEDB` | Postaw osobnego Postgresa: `docker run -d --name om-verify-pg -e POSTGRES_PASSWORD=postgres -p 55432:5432 pgvector/pgvector:pg17-trixie` i w kroku 2 użyj `DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres node -e …`; po wszystkim `docker rm -f om-verify-pg`. |
+| `CREATE DATABASE` → `permission denied` | użytkownik z `DATABASE_URL` nie ma `CREATEDB` | Postaw osobnego Postgresa: `docker run -d --name om-verify-pg -e POSTGRES_PASSWORD="$(node -e 'console.log(require("crypto").randomBytes(24).toString("hex"))')" -p 127.0.0.1:55432:5432 pgvector/pgvector:pg17-trixie`; przed krokiem 2 ustaw `VERIFY_BASE_URL` na jego URL, a po wszystkim usuń wyłącznie `docker rm -f om-verify-pg`. |
 | migracja nie wchodzi na czystej bazie | błąd w SQL albo zależność od stanu, którego czysta baza nie ma | Popraw encję, wygeneruj migrację ponownie (`yarn db:generate`), przejrzyj SQL. Nigdy nie edytuj migracji już scalonej do `main` — dodaj nową. Jeśli `db:generate` wygenerował pliki dla innych modułów, usuń je. |
 | `<modul aplikacji>: no pending migrations` w kroku 3 | migracje poszły na starą bazę (np. `DATABASE_URL` nie został podmieniony) | Dowód nieważny — powtórz kroki 2–3 w tej samej sesji terminala. |
 | `Build cache valid ... Skipping build pipeline` w logu | uruchomienie bez `--force-rebuild` | Powtórz krok 4 z flagami. |
