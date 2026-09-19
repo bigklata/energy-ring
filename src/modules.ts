@@ -192,8 +192,4 @@ if (enterpriseModulesEnabled && enterpriseSecurityEnabled) {
 
 if (enterpriseModulesEnabled && enterpriseAgentsEnabled) {
   enabledModules.push({ id: 'agent_orchestrator', from: '@open-mercato/enterprise' })
-  // Example app module: shows how to declare an Agent Orchestrator agent from a
-  // brand-new module (see apps/mercato/src/modules/agent_examples/README.md).
-  // It imports the orchestrator SDK, so it is only enabled alongside it.
-  enabledModules.push({ id: 'agent_examples', from: '@app' })
 }
