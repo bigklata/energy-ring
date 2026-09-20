@@ -83,7 +83,7 @@ export type RdnEvaluationItem = {
   }
 }
 
-const METHOD_VERSION = 'baseline-correction.v0'
+const METHOD_VERSION = 'baseline-correction.v1'
 const PARAMS_VERSION = 'params.v0.1-illustrative'
 
 const { sourceSeries, batch } = sourceBatchComplete

@@ -1,12 +1,14 @@
 # RDN forecast method — baseline correction, evaluation, and replay
 
-**Status:** Refinement output for issue #7; not a runtime contract and not an
-implementation. It is the required input to #3's open question 2 (correction
-formula, MTU mapping, DST, cutoff, evaluation window) and to #3's `TBD(#7)`
-fields in `.ai/specs/2026-09-19-rdn-forecast-mvp-technical-contracts.md`.
+**Status:** Approved method decision `baseline-correction.v1` for the draft
+runtime contract; the forecast engine is not implemented. This document
+defines the formula, MTU mapping, DST, cutoff, and evaluation window consumed
+by `.ai/specs/2026-09-19-rdn-forecast-mvp-technical-contracts.md`.
 **Product source:** `.ai/specs/2026-09-19-rdn-forecast-mvp.md` (issue #2).
-**Data evidence:** `docs-marek/pomiary-api-pse.md` and
-`docs/pse-source-catalog.md` (issue #6 A).
+**Data evidence:** `docs-marek/pomiary-api-pse.md`,
+`docs/pse-source-catalog.md` (issue #6 A), and the official PSE report
+[description](https://www.pse.pl/dane-systemowe/plany-pracy-kse/plan-koordynacyjny-5-letni/wielkosci-podstawowe/opis)
+and [API field map](https://api.raporty.pse.pl/EndpointsMap.pdf).
 **Scope:** define the forecast formula, both baselines, the hourly-to-MTU
 mapping and DST rules, the cutoff and lateness policy, source/version gap
 rules, the evaluation window and exclusion policy, and the MAE definition —
@@ -15,10 +17,13 @@ document adds no schema, migration, or code.
 
 ## 1. Method identity and parameter versioning
 
-Method identifier: `baseline-correction.v0` (matches the example command
-payload in #3's draft contract). The identifier is immutable once a forecast
-run references it; a change to the formula shape requires a new suffix
-(`v1`, `v2`, ...).
+Method identifier for new runs: `baseline-correction.v1`. The earlier
+`baseline-correction.v0` proposal assumed one hourly forecast value for both
+occurrences of the autumn repeated hour. A public PSE sample has two distinct
+rows and values, so v1 changes that mapping. Never relabel a persisted v0 run
+as v1; each run keeps its original `methodVersion` and source snapshots. No
+forecast run exists in the current app yet. A further semantic change requires
+another suffix (`v2`, ...).
 
 Parameters (weights and coefficients, section 3) are a separate versioned
 object, `paramsVersion`, referenced by ID from each forecast run alongside
@@ -36,6 +41,10 @@ window itself, and never re-fit mid-window to chase a better MAE.
 |---|---|---|---|
 | Target price | `csdac-pln.csdac_pln` | 15 min (MTU) | Forecast target; both baselines are built from its accepted history |
 | Wind/PV/demand forecast | `pk5l-wp`: `fcst_wi_tot_gen`, `fcst_pv_tot_gen`, `grid_demand_fcst` | hourly | Correction term inputs |
+
+The three `pk5l-wp` fields are **MW**: the PSE field map links them to report
+columns 11, 12, and 3, and the official report description labels each `[MW]`.
+`grid_demand_fcst` is net grid demand; it is not the gross `kse-load` series.
 
 `kse-load` is not used by this method (`docs/pse-source-catalog.md` keeps it
 a comparison/quality candidate only, per #6 A). Adding a source later is a
@@ -88,12 +97,29 @@ The expected MTU count for a delivery date is calendar-derived per
 Europe/Warsaw: **92** (spring DST, one local hour skipped), **96** (ordinary),
 or **100** (autumn DST, one local hour repeated). It is never hard-coded to 96.
 
-**Hourly → MTU mapping:** each `pk5l-wp` hourly value is held flat across the
-four 15-minute MTU inside that local hour (step function, no interpolation).
-On a repeated local hour (autumn), the same hourly forecast value applies to
-both UTC halves of the repeated hour — the correction term does not double it
-or average two different hourly values, because `pk5l-wp` only publishes one
-value per local-hour label per day.
+**Hourly → MTU mapping (v1):** `pk5l-wp.plan_dtime_utc` is the UTC **end** of
+the source hour. A row ending at `E` owns the half-open interval
+`[E−1 hour, E)`; its MW value is held flat across that interval's four
+15-minute MTU (step function, no interpolation). UTC start identifies the
+hour; a local clock label alone does not. A bounded PSE sample for
+2025-10-26 contained 25 consecutive hourly rows, including two different
+values for the repeated local hour (wind 4125 and 4387 MW). Each row supplies
+its own four MTU, giving 100 distinct MTU for that date. Neither row is
+discarded, duplicated into the other's UTC hour, nor averaged. The spring
+date has 23 source hours and 92 MTU; no local 02:00 hour is invented. These
+counts are calendar expectations, not a claim that every provider response is
+complete. Import quality rejects a missing or duplicate UTC interval instead
+of filling it from a neighboring hour.
+
+For the correction delta, `hour(t)` is the D source row whose UTC interval
+contains MTU `t`. Find the D−1 comparator by the same local wall-clock hour
+label. If D has two occurrences of 02:00 and D−1 has one, each D occurrence
+keeps its distinct source value and compares with that one D−1 value. If D−1
+has two occurrences and D has one, choose the chronologically first (lower
+UTC start) D−1 source row. If D−1 lacks that label on a spring transition,
+the correction input is missing and section 5 blocks the point; never use
+zero or an adjacent hour. Store UTC interval, local label and offset, provider
+version, publication time, and chosen comparator in provenance.
 
 **Baseline alignment — `sameLocalLabel(t)`:** baselines match by local
 wall-clock label (`HH:MM`), not by UTC offset and not by ordinal MTU position,
@@ -119,11 +145,11 @@ case (D, D-1, D-7 all 96 MTU) and needs three explicit DST rules:
    chronologically **first** (lower UTC start) of the two as the baseline
    value. It is never an average of the two and never the second occurrence.
 
-The same three rules apply symmetrically when D itself is the 100-MTU day and
-the baseline day is ordinary: D has two MTU sharing a local label, and both
-receive the same single baseline value from the ordinary day (see the
-repeated-hour mapping rule above, applied to baselines as well as to the
-hourly correction inputs).
+When D itself is the 100-MTU day and a baseline day is ordinary, both D
+occurrences receive the same single baseline price from that ordinary day.
+This baseline price lookup is separate from the v1 hourly correction mapping:
+the two D source rows may have different MW values and therefore different
+corrections.
 
 ## 5. Cutoff and missing-input policy
 
@@ -297,4 +323,5 @@ disjointly-trained parameters.
 - The DST alignment and missing-baseline fallback in section 4 need one
   self-contained fixture per rule (spring/autumn, D vs. baseline-day
   transition) before Phase 2 implementation, per that contract's traceability
-  table.
+  table. The provider adapter's 23/24/25-hour → 92/96/100-MTU fixtures,
+  including two distinct autumn source values, are a separate input oracle.

@@ -1,14 +1,12 @@
 # Energy Ring — technical contracts for the RDN forecast MVP
 
-**Status:** Draft contract v0.2. Still not Ready — see the readiness gate.  
+**Status:** Draft contract v0.3. Still not Ready — see the readiness gate.
 **Product source:** `.ai/specs/2026-09-19-rdn-forecast-mvp.md` (issue #2).  
 **Research source:** `docs/pse-source-catalog.md` (issue #6 A, PR #12; approved by
 two reviewers, still draft pending consumption by #3/#7 — this document is that
 consumption).  
-**Method source:** `docs/rdn-forecast-method.md` (issue #7 refinement, PR #15
-by `bigklata`). PR #15 has not yet been reviewed; this document treats its
-content as the current proposed method, not as approved. A material change to
-PR #15 during review must be reflected back here before the gate below can close.  
+**Method source:** `docs/rdn-forecast-method.md` (issue #7 refinement, merged
+PR #15, amended by the approved `baseline-correction.v1` DST decision).
 **Purpose:** give #6 B, #7, and #8 one concrete contract to review before code
 is written. This document does not add runtime code, migrations, or dependencies.
 
@@ -24,22 +22,19 @@ The contract is intentionally split into two classes:
 - **closed for implementation planning:** ownership, scope isolation, immutable
   snapshots, per-record publication time, quality gating, idempotency shape,
   error semantics, and the API/UI seams below;
-- **blocking inputs:** source units/retention and the hourly-to-MTU method from
-  #6 A and #7. No value is invented for these. The affected fields are marked
-  `TBD(#6A/#7)` and cannot be enabled in production until resolved.
+- **blocking inputs:** historical source-version availability, calibrated
+  parameters, and complete DST fixtures. The `pk5l-wp` units and hourly-to-MTU
+  mapping are resolved below; no production forecast is enabled by this draft.
 
-PR #15 resolves most of the #7 blocking input — the correction formula, MTU
-mapping, DST rules, cutoff policy, evaluation window/coverage, and MAE
-definition are now specified in `docs/rdn-forecast-method.md` (summarized in
-the new "Forecast method" section below) and are no longer `TBD` here. Two
-items stay open even after #15: the `pk5l-wp` forecast fields
-(`fcst_wi_tot_gen`, `fcst_pv_tot_gen`, `grid_demand_fcst`) that feed the
-correction term still have **unconfirmed units** per `docs/pse-source-catalog.md`
-(#6 A left "units and field semantics" on its own follow-up list) even though
-PR #15's formula and its `kWind`/`kPv`/`kLoad` coefficients assume MW; and
-PR #15's parameter values (`params.v0.1-illustrative`) are explicitly
-placeholders, not a calibrated `paramsVersion`. Both remain blocking for
-Phase 2, tracked in the readiness gate.
+The method defines the correction formula, MTU mapping, DST rules, cutoff,
+evaluation window/coverage, and MAE. The official PSE
+[field map](https://api.raporty.pse.pl/EndpointsMap.pdf) and
+[report description](https://www.pse.pl/dane-systemowe/plany-pracy-kse/plan-koordynacyjny-5-letni/wielkosci-podstawowe/opis)
+confirm **MW** for `fcst_wi_tot_gen`, `fcst_pv_tot_gen`, and
+`grid_demand_fcst`. A bounded autumn API sample disproved the original v0
+one-value repeated-hour assumption. The approved v1 maps each distinct UTC
+source hour to its own four MTU. The illustrative coefficient values still
+need calibration on a disjoint training window before Phase 2.
 
 ## Ownership and module boundary
 
@@ -102,10 +97,10 @@ audit and ordering. No database migration is requested by this PR.
 
 | Entity | Required fields and invariants | Unique/index keys |
 |---|---|---|
-| `RdnSourceSeries` | `id`, scope, `provider`, `endpoint`, `seriesKey`, `role`, `timezone`, `unit` (`PLN/MWh` confirmed for `csdac-pln`; `TBD(#6A)` for the three `pk5l-wp` fields — assumed MW by #7's formula, not yet confirmed), `active`, `version` | scope + provider + endpoint + seriesKey; scope + active |
+| `RdnSourceSeries` | `id`, scope, `provider`, `endpoint`, `seriesKey`, `role`, `timezone`, `unit` (`PLN/MWh` for `csdac-pln`; `MW` for the three named `pk5l-wp` fields), `active`, `version` | scope + provider + endpoint + seriesKey; scope + active |
 | `RdnImportBatch` | `id`, scope, source series ID, delivery date, status, `receivedAtUtc`, `completedAtUtc?`, `cutoffUtc?`, `cursorStart?`, `cursorEnd?`, `supersedesBatchId?`, `qualitySummary` | scope + source + delivery date + provider revision; scope + status |
 | `RdnImportPoint` | `id`, scope, batch ID, interval UTC, local date/label, value nullable, unit, `publicationTsUtc`, `fetchedAtUtc`, provider key, rejection codes | batch + provider key; batch + interval start; scope + series + interval + provider revision |
-| `RdnForecastRun` | `id`, scope, delivery date, mode (`live`/`replay`), cutoff UTC, source snapshot IDs, `methodVersion` (e.g. `baseline-correction.v0`), `paramsVersion` (e.g. `params.v0.1-illustrative`, replaced by a calibrated version before Phase 2), status, failure code | scope + delivery date + mode + idempotency key |
+| `RdnForecastRun` | `id`, scope, delivery date, mode (`live`/`replay`), cutoff UTC, source snapshot IDs, `methodVersion` (`baseline-correction.v1` for new runs), `paramsVersion` (e.g. `params.v0.1-illustrative`, replaced by a calibrated version before Phase 2), status, failure code | scope + delivery date + mode + idempotency key |
 | `RdnForecastPoint` | `id`, scope, run ID, interval UTC, baseline D-1/D-7 nullable (with a per-point flag for the single-baseline DST fallback in `docs/rdn-forecast-method.md` §4), adjustment nullable, forecast nullable, input provenance | run + interval start |
 | `RdnEvaluationRun` | `id`, scope, forecast run ID, target batch ID, `windowStart`/`windowEnd` (Europe/Warsaw delivery dates, fixed before scoring per `docs/rdn-forecast-method.md` §6 and never edited after — a changed window is a new run), `methodVersion`, `evaluationKind` (`historical` or `test_fixture_replay`), `coverageStatus` (`evaluated` or `insufficient_coverage`, <80% per §6), status | scope + forecast run + target batch |
 | `RdnEvaluationPoint` | `id`, scope, evaluation ID, interval UTC, forecast, actual, errors, inclusion code (`included`, or one of `docs/rdn-forecast-method.md` §6's stable exclusion codes: `missing_required_input`, `missing_target`, `blocked_forecast`, `late_publication`, `provider_unavailable`, `no_verifiable_history`) | evaluation + interval start |
@@ -140,8 +135,10 @@ document, not this summary, is authoritative on the formula's exact algebra
 and worked example. It replaces this document's earlier `TBD(#7)` placeholder
 for the correction formula, MTU mapping, cutoff, and evaluation policy.
 
-- **Method identity:** `baseline-correction.v0` is immutable once a run
-  references it; a shape change requires a new method-version suffix.
+- **Method identity:** `baseline-correction.v1` applies to new runs and preserves
+  both distinct autumn source hours. The earlier v0 proposal remains a distinct
+  semantic version; never reinterpret a persisted v0 run as v1. A further
+  semantic change requires a new suffix.
   Coefficient values are a separate `paramsVersion`; `params.v0.1-illustrative`
   (this document's and PR #15's current value) is a hand-worked-example
   placeholder, not a calibrated parameter set, and must not be used for a real
@@ -155,12 +152,16 @@ for the correction formula, MTU mapping, cutoff, and evaluation policy.
   sufficient proof and forces a `test_fixture_replay` label instead of a
   historical evaluation.
 - **MTU mapping and DST:** expected MTU per delivery date is calendar-derived
-  (92/96/100), never hard-coded to 96. Baselines align by local wall-clock
+  (92/96/100), never hard-coded to 96. Each `pk5l-wp.plan_dtime_utc` is an
+  hour end in UTC; its value covers `[end−1 hour, end)` and its four MTU.
+  The two autumn UTC hours keep separate values. Baselines align by local wall-clock
   label, not UTC offset or ordinal position. A spring-transition baseline day
   missing a label makes that baseline `missing` (not zero); if only one of
   D-1/D-7 is missing, the forecast falls back to the other baseline alone,
   recorded on the point's provenance. An autumn-transition baseline day's
   repeated label uses the chronologically first occurrence, never an average.
+  The same first-occurrence tie-break applies to a repeated D−1 hourly
+  correction comparator. It does not collapse two distinct D input hours.
 - **Evaluation:** the window (`windowStart`/`windowEnd`) is fixed before
   scoring and never extended after seeing results. An MTU is included in the
   forecast/baseline-D1/baseline-D7 comparison only if all three plus the
@@ -169,10 +170,9 @@ for the correction formula, MTU mapping, cutoff, and evaluation policy.
   of a MAE; fewer than 14 verifiable historical delivery dates forces the
   `test_fixture_replay` label. MAE (PLN/MWh) is the headline metric; MAPE is
   not used because RDN prices can be zero or negative.
-- **Still open (tracked in the readiness gate):** the unit of the three
-  `pk5l-wp` correction inputs is unconfirmed by #6 A even though the formula's
-  coefficients assume MW; a calibrated, disjointly-trained `paramsVersion`;
-  and one fixture per DST rule in `docs/rdn-forecast-method.md` §4.
+- **Still open (tracked in the readiness gate):** a calibrated,
+  disjointly-trained `paramsVersion`; complete per-rule baseline DST fixtures;
+  and verifiable point-in-time source history.
 
 ## Commands and API contracts
 
@@ -215,8 +215,10 @@ page and its points commit.
 Command `rdn_forecast.run` accepts a committed accepted snapshot:
 
 ```json
-{"deliveryDate":"2026-09-20","inputBatchIds":["batch-1"],"cutoffUtc":"2026-09-19T11:30:00Z","methodVersion":"baseline-correction.v0","mode":"live","idempotencyKey":"run-1"}
+{"deliveryDate":"2026-09-20","inputBatchIds":["batch-1"],"cutoffUtc":"2026-09-19T13:30:00Z","methodVersion":"baseline-correction.v1","mode":"live","idempotencyKey":"run-1"}
 ```
+
+The example cutoff is 15:30 Europe/Warsaw on 2026-09-19 (CEST, UTC+02:00).
 
 The server verifies that all input publication times and acquisitions satisfy
 the cutoff and that the method version/parameters are available. It returns
@@ -276,6 +278,7 @@ added later, must have an equivalent accessible table.
 | `rdn_forecast.import` | REQ-001 | command + provider adapter | `provider-paginated-revision.json`; retry creates no duplicate |
 | `rdn_forecast.run`, `GET runs` | REQ-002 | command + immutable snapshot | `forecast-dst-cutoff.json`; replay is byte-equivalent |
 | `rdn_forecast.run` DST alignment | REQ-002 | `docs/rdn-forecast-method.md` §4 rules | one fixture per rule: spring D, spring baseline-day-only, autumn baseline-day-only, autumn D — each asserts the documented fallback/tie-break, not zero or an average |
+| `pk5l-wp` hourly input mapping | REQ-001/002 | UTC hour-end adapter | offline fixtures for 23/24/25 source hours → 92/96/100 distinct MTU; autumn repeated hour has two different MW values and eight separate MTU |
 | `rdn_forecast.evaluate`, `GET evaluations` | REQ-003 | command + versioned evaluation | `evaluation-null-negative.json`; same MTU denominator, null excluded |
 | `rdn_forecast.evaluate` coverage/labeling | REQ-003 | fixed window manifest + coverage check | `evaluation-insufficient-coverage.json` (<80% MTU); `evaluation-test-fixture-replay.json` (<14 verifiable dates) |
 | `/backend/rdn-forecast` | REQ-004 | authored page/DataTable | browser fixture covers denied, blocked, conflict, keyboard, narrow |
@@ -294,26 +297,28 @@ review scoped SQL/snapshot, and ask before applying a migration. Disablement
 stops new imports/runs while retaining immutable evidence. Rollback never
 deletes provider points or forecast/evaluation history.
 
-No existing API, event, entity, route, export, or CLI is changed. Any change to
-the proposed public IDs or paths before implementation is a draft edit; after
-publication it must follow `.ai/guides/upstream/BACKWARD_COMPATIBILITY.md`.
+No installed Open Mercato API, event, entity, route, export, or CLI is changed.
+The unactivated RDN adapter slice does change its app-internal exported
+`KseLoadPoint` and `Pk5lWpHour` types: v1 requires `unit: 'MW'`. Repository
+call sites are confined to this module and its tests, and no released RDN API
+or stored runs require migration. Any change to the proposed public IDs or
+paths before implementation is a draft edit; after publication it must follow
+`.ai/guides/upstream/BACKWARD_COMPATIBILITY.md`.
 
 ## Open questions and readiness gate
 
-1. **#6 A — mostly resolved, one item open:** `csdac-pln`'s PLN/MWh unit,
-   15-minute resolution, and per-row publication are confirmed
-   (`docs/pse-source-catalog.md`, PR #12, approved). The `pk5l-wp` fields'
-   unit is still unconfirmed even though PR #15's formula assumes MW — this
-   blocks calibrating a real `paramsVersion`. Revision semantics, retention,
-   license, cadence, and bounded backfill also remain open per PR #12's own
-   follow-up list and are not required to unblock Phase 1's import shape.
-2. **#7 — refinement resolved, pending review; implementation still blocked:**
-   the correction formula, MTU mapping, DST rules, cutoff policy, and
-   evaluation/MAE definition are specified in `docs/rdn-forecast-method.md`
-   (PR #15, summarized above). PR #15 itself has not been reviewed yet — a
-   requested change there must be reflected back into this contract. Its own
-   open items (calibrated `paramsVersion`, per-DST-rule fixtures) carry
-   forward to Phase 2 here, not to #3's closure.
+1. **#6 A — units resolved; history still open:** `csdac-pln` is PLN/MWh,
+   while PSE's official field map and report description establish MW for
+   the three named `pk5l-wp` inputs. Revision semantics, retention, license,
+   cadence, and bounded backfill remain open per `docs/pse-source-catalog.md`;
+   a current archive response is not proof of point-in-time availability.
+2. **#7 — refinement merged and DST corrected to v1; implementation still
+   blocked:** `docs/rdn-forecast-method.md` defines the method. A bounded PSE
+   autumn response has 25 distinct hourly rows, contradicting v0's single
+   repeated-hour value. The approved `baseline-correction.v1` mapping keeps
+   both UTC hours. A calibrated `paramsVersion` and four baseline DST-rule
+   fixtures remain Phase 2 gates. The provider adapter's 23/24/25-hour input
+   fixtures are separate and already exercise the UTC mapping.
 3. **Team — real names known, GitHub logins not confirmed:** `docs/team-workflow.md`
    names Grzegorz → #4 and Marek → #7/#8 by real name, and this contract
    correctly gives `dominikczerwinski-eng` for #5's integration seam. It does
@@ -336,9 +341,9 @@ to the traceability table, and run the documented contract review before code.
 
 ### Phase 0 — Resolve the contract
 
-1. Consume #6 A and #7's refinement output (done above); one `TBD` remains —
-   the `pk5l-wp` unit confirmation — plus a calibrated `paramsVersion` once
-   that unit and a disjoint training window are available.
+1. Consume #6 A and #7's refinement output (done above), including MW units
+   and the approved v1 DST mapping; calibrate `paramsVersion` on a training
+   window disjoint from evaluation before a real run.
 2. Set a GitHub `Assignee` on #3/#4/#7/#8 matching this document's owner
    table; confirm installed seams, feature IDs, and exact surface-inventory
    references without generating or applying migrations. Blocked on #4/#5
