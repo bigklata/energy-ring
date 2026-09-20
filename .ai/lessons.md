@@ -1,6 +1,6 @@
 # Lessons
 
-This catalog indexes 2 focused lessons without loading their full text. Route the task first, then read only records whose **modules**, standalone-harness **areas**, or **topics** match the work.
+This catalog indexes 3 focused lessons without loading their full text. Route the task first, then read only records whose **modules**, standalone-harness **areas**, or **topics** match the work.
 
 ## How to use this catalog
 
@@ -33,3 +33,7 @@ rg -l '"<area>"|"<module>"|"<topic>"' .ai/lessons/*.md
 ### spec-pr
 
 - [Backlog readiness requires an agreed product scope](lessons/backlog-product-authority.md) — area:spec-pr; module:platform; topic:backlog,scope-cohesion,evidence
+
+### testing
+
+- [Migration proof must preserve process failures](lessons/migration-proof-exit-status.md) — area:testing,debugging; module:rdn_forecast; topic:migration,exit-status,evidence,scope

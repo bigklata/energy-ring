@@ -98,11 +98,11 @@ audit and ordering. No database migration is requested by this PR.
 | Entity | Required fields and invariants | Unique/index keys |
 |---|---|---|
 | `RdnSourceSeries` | `id`, scope, `provider`, `endpoint`, `seriesKey`, `role`, `timezone`, `unit` (`PLN/MWh` for `csdac-pln`; `MW` for the three named `pk5l-wp` fields), `active`, `version` | scope + provider + endpoint + seriesKey; scope + active |
-| `RdnImportBatch` | `id`, scope, source series ID, delivery date, status, `receivedAtUtc`, `completedAtUtc?`, `cutoffUtc?`, `cursorStart?`, `cursorEnd?`, `supersedesBatchId?`, `qualitySummary` | scope + source + delivery date + provider revision; scope + status |
+| `RdnImportBatch` | `id`, scope, source series ID, delivery date, status, `receivedAtUtc`, `completedAtUtc?`, `cutoffUtc?`, `cursorStart?`, `cursorEnd?`, `supersedesBatchId?`, `qualitySummary`, `idempotencyKey`, `requestFingerprint` (SHA-256 hex of the canonical import command payload; rows that predate the key carry `legacy:<id>` in both) | scope + source + delivery date + provider revision; scope + idempotency key; scope + status |
 | `RdnImportPoint` | `id`, scope, batch ID, interval UTC, local date/label, value nullable, unit, `publicationTsUtc`, `fetchedAtUtc`, provider key, rejection codes | batch + provider key; batch + interval start; scope + series + interval + provider revision |
 | `RdnForecastRun` | `id`, scope, delivery date, mode (`live`/`replay`), cutoff UTC, source snapshot IDs, `methodVersion` (`baseline-correction.v1` for new runs), `paramsVersion` (e.g. `params.v0.1-illustrative`, replaced by a calibrated version before Phase 2), status, failure code | scope + delivery date + mode + idempotency key |
 | `RdnForecastPoint` | `id`, scope, run ID, interval UTC, baseline D-1/D-7 nullable (with a per-point flag for the single-baseline DST fallback in `docs/rdn-forecast-method.md` §4), adjustment nullable, forecast nullable, input provenance | run + interval start |
-| `RdnEvaluationRun` | `id`, scope, forecast run ID, target batch ID, `windowStart`/`windowEnd` (Europe/Warsaw delivery dates, fixed before scoring per `docs/rdn-forecast-method.md` §6 and never edited after — a changed window is a new run), `methodVersion`, `evaluationKind` (`historical` or `test_fixture_replay`), `coverageStatus` (`evaluated` or `insufficient_coverage`, <80% per §6), status | scope + forecast run + target batch |
+| `RdnEvaluationRun` | `id`, scope, forecast run ID, target batch ID, `windowStart`/`windowEnd` (Europe/Warsaw delivery dates, fixed before scoring per `docs/rdn-forecast-method.md` §6 and never edited after — a changed window is a new run), `methodVersion`, `evaluationKind` (`historical` or `test_fixture_replay`), `coverageStatus` (`evaluated` or `insufficient_coverage`, <80% per §6), status | scope + forecast run + target batch + `windowStart` + `windowEnd` |
 | `RdnEvaluationPoint` | `id`, scope, evaluation ID, interval UTC, forecast, actual, errors, inclusion code (`included`, or one of `docs/rdn-forecast-method.md` §6's stable exclusion codes: `missing_required_input`, `missing_target`, `blocked_forecast`, `late_publication`, `provider_unavailable`, `no_verifiable_history`) | evaluation + interval start |
 
 `qualitySummary` is a structured value, not free-form text: expected count,
@@ -296,6 +296,14 @@ additive new tables and stable module-owned IDs; it must run `yarn db:generate`,
 review scoped SQL/snapshot, and ask before applying a migration. Disablement
 stops new imports/runs while retaining immutable evidence. Rollback never
 deletes provider points or forecast/evaluation history.
+
+Schema rollback is guarded, not lossy. Reverting the windowed evaluation key
+(`Migration20260919151559_rdn_forecast`) is refused with an exception, before
+any constraint or column changes, while one scope + forecast run + target
+batch has evaluations for more than one window; reverting the import
+idempotency columns is likewise refused once any batch carries a key written
+by the import command. Past that point the migration is an irreversible
+boundary: roll forward, or disable the module.
 
 No installed Open Mercato API, event, entity, route, export, or CLI is changed.
 The unactivated RDN adapter slice does change its app-internal exported
