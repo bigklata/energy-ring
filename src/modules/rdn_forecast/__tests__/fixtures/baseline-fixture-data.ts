@@ -80,7 +80,7 @@ export const autumnOrdinaryDay = dayPoints('2026-10-26')
 export const springBaselineDay = {
   d1: dayPoints('2026-03-29'),
   d7: dayPoints('2026-03-23'),
-  ordinary: dayPoints('2026-03-24'),
+  ordinary: dayPoints('2026-03-23'),
 }
 
 export const autumnOrdinaryBaseline = {

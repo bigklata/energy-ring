@@ -56,7 +56,9 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
     expect(Date.parse(target[0].intervalStartUtc) - Date.parse(d1[0].intervalStartUtc)).toBe(4 * 60 * 60 * 1000)
     const point = byLabel(result.points, label)[0]
     expect(point.baselineD1).toBe(d1[0].value)
-    expect(point.baselineD7).toBe(springBaselineDay.d7.find((p) => p.localLabel === label)![0].value)
+    const d7Point = springBaselineDay.d7.find((p) => p.localLabel === label)
+    expect(d7Point).toBeDefined()
+    expect(point.baselineD7).toBe(d7Point!.value)
   })
 
   describe('fixture forecast-dst-cutoff.json — the four DST rules of §4', () => {
@@ -69,6 +71,7 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
       })
       expect(result.expectedMtu).toBe(92)
       expect(result.points).toHaveLength(92)
+      expect(result.dstFallbackLabels).toEqual([])
       for (const label of ['02:00', '02:15', '02:30', '02:45']) {
         expect(byLabel(result.points, label)).toEqual([])
         expect(result.absentLocalLabels).toContain(label)
@@ -87,7 +90,8 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
       })
       expect(result.expectedMtu).toBe(96)
       expect(result.points).toHaveLength(96)
-      expect(result.dstFallbackLabels).toEqual(['02:00', '02:15', '02:30', '02:45'])
+      expect(result.absentLocalLabels).toEqual([])
+      expect(result.dstFallbackLabels).toEqual([])
 
       for (const label of ['02:00', '02:15', '02:30', '02:45']) {
         const point = byLabel(result.points, label)[0]
@@ -103,6 +107,7 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
       const other = result.points.filter((p) => !p.localLabel.startsWith('02:'))
       expect(other).toHaveLength(92)
       expect(other.every((p) => p.baselineD1 !== null && p.baselineD7 !== null)).toBe(true)
+      expect(other.every((p) => p.baselineFallback === null)).toBe(true)
     })
 
     it('rule 3: an autumn-transition baseline day tie-breaks to the first (lower UTC) occurrence, never an average', () => {
@@ -114,6 +119,8 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
       })
       expect(result.expectedMtu).toBe(96)
       expect(result.tieBrokenLabels).toEqual(['02:00', '02:15', '02:30', '02:45'])
+      expect(result.dstFallbackLabels).toEqual([])
+      expect(result.absentLocalLabels).toEqual([])
 
       for (const label of ['02:00', '02:15', '02:30', '02:45']) {
         const group = byLabel(autumnOrdinaryBaseline.d1, label)
@@ -143,7 +150,9 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
       })
       expect(result.expectedMtu).toBe(100)
       expect(result.points).toHaveLength(100)
+      expect(result.tieBrokenLabels).toEqual([])
       expect(result.dstFallbackLabels).toEqual([])
+      expect(result.absentLocalLabels).toEqual([])
 
       for (const label of ['02:00', '02:15', '02:30', '02:45']) {
         const occurrences = byLabel(result.points, label)
@@ -165,16 +174,17 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
     const result = computeBaselines({
       deliveryDate: '2026-03-30',
       targetPoints: springDeliveryDay,
-      baselineD1Points: springBaselineDay.d1,
-      baselineD7Points: springBaselineDay.ordinary,
+      baselineD1Points: springBaselineDay.ordinary,
+      baselineD7Points: springBaselineDay.d1,
     })
     expect(result.dstFallbackLabels).toEqual(['02:00', '02:15', '02:30', '02:45'])
     for (const label of ['02:00', '02:15', '02:30', '02:45']) {
       const point = byLabel(result.points, label)[0]
       expect(point.baselineD1).toBeNull()
       expect(point.missingD1Reason).toBe('baseline_day_missing_local_label')
-      const d7Value = springBaselineDay.ordinary.find((p) => p.localLabel === label)![0].value
-      expect(point.baselineD7).toBe(d7Value)
+      const d7Point = springBaselineDay.ordinary.find((p) => p.localLabel === label)
+      expect(d7Point).toBeDefined()
+      expect(point.baselineD7).toBe(d7Point!.value)
       expect(point.baselineFallback).toBe('d1_only')
       expect(point.blocked).toBe(false)
       expect(point.blockedCode).toBeNull()
@@ -189,9 +199,10 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
     const result = computeBaselines({
       deliveryDate: '2026-03-30',
       targetPoints: springDeliveryDay,
-      baselineD1Points: springBaselineDay.ordinary,
-      baselineD7Points: springBaselineDay.d7,
+      baselineD1Points: springBaselineDay.d1,
+      baselineD7Points: springBaselineDay.ordinary,
     })
+    expect(result.dstFallbackLabels).toEqual(['02:00', '02:15', '02:30', '02:45'])
     for (const label of ['02:00', '02:15', '02:30', '02:45']) {
       const point = byLabel(result.points, label)[0]
       expect(point.baselineD1).not.toBeNull()
@@ -216,7 +227,7 @@ describe('computeBaselines — RDN forecast baseline D-1/D-7 (method §3–§5)'
     expect(point.missingD1Reason).toBe('baseline_day_null_value')
     expect(point.baselineD1).not.toBe(0)
     expect(point.baselineD7).toBe(340.0)
-    expect(point.baselineFallback).toBe('d1_only')
+    expect(point.baselineFallback).toBe('d7_only')
     expect(point.blocked).toBe(false)
   })
 

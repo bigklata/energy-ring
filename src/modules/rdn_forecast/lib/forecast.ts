@@ -55,6 +55,8 @@ export type BaselineComputeResult = {
   points: BaselinePointResult[]
   /** Local labels whose autumn baseline day repeated them and was tie-broken. */
   tieBrokenLabels: string[]
+  /** Local labels on D whose baseline day lacked them (spring-short baseline). */
+  dstFallbackLabels: string[]
 }
 
 export type ComputeBaselinesInput = {
@@ -224,7 +226,10 @@ function expectedMtuOfDay(dateIso: string, timeZone: string): number {
   const nextDayUtc = Date.parse(`${shiftLocalDate(new Date(dayStartUtc), 1)}T00:00:00.000Z`)
   const first = localPartsOfInstant(new Date(dayStartUtc).toISOString(), timeZone)
   const last = localPartsOfInstant(new Date(nextDayUtc - 1).toISOString(), timeZone)
-  return first.date === last.date ? Math.round((nextDayUtc - dayStartUtc) / MTU_MS) : 96
+  if (first.date !== last.date) {
+    return first.date === dateIso ? 92 : 100
+  }
+  return Math.round((nextDayUtc - dayStartUtc) / MTU_MS)
 }
 
 function missingReason(point: IndexedPoint | undefined): MissingBaselineReason | null {
@@ -287,6 +292,7 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
 
   const absentLocalLabels = labels.filter((label) => d1Lookup.missingLabels.has(label) && d7Lookup.missingLabels.has(label))
   const tieBrokenLabels = new Set<string>()
+  const dstFallbackLabels = new Set<string>()
 
   const points: BaselinePointResult[] = target.map((point) => {
     const d1Pick = pickBaseline(d1Lookup, point.localLabel)
@@ -307,6 +313,7 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
       blockedCode = 'blocked_forecast'
     } else if (d1Available !== d7Available) {
       baselineFallback = d1Available ? 'd1_only' : 'd7_only'
+      dstFallbackLabels.add(point.localLabel)
     }
 
     return {
@@ -328,5 +335,6 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
     absentLocalLabels,
     points,
     tieBrokenLabels: labels.filter((label) => tieBrokenLabels.has(label)),
+    dstFallbackLabels: labels.filter((label) => dstFallbackLabels.has(label)),
   }
 }
