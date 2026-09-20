@@ -14,10 +14,13 @@ export default function RdnForecastPage() {
         description={t('rdn_forecast.panel.description')}
       />
       <PageBody>
-        <EmptyState
-          title={t('rdn_forecast.panel.empty.title')}
-          description={t('rdn_forecast.panel.empty.description')}
-        />
+        {/* Stable hook for the instance proof: the denial path must never render it. */}
+        <div data-testid="rdn-forecast-panel">
+          <EmptyState
+            title={t('rdn_forecast.panel.empty.title')}
+            description={t('rdn_forecast.panel.empty.description')}
+          />
+        </div>
       </PageBody>
     </Page>
   )
