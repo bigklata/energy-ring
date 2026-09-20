@@ -24,14 +24,20 @@ Non-goals: correction arithmetic, weighting, cutoff/PIT, database/import/UI work
 
 ## Progress
 
+PR: #66
+
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
 ### Phase 1: Repair and regression proof
 
-- [ ] 1.1 Preserve author work and reproduce failures
+- [x] 1.1 Preserve author work and reproduce failures — de95346 (targeted Jest: 1 PASS / 17 FAIL; log and JSON retained outside Git)
 - [ ] 1.2 Repair baseline/calendar behavior and independent oracles
 
 ### Phase 2: Verify and deliver
 
 - [ ] 2.1 Complete configured gates and independent review
 - [ ] 2.2 Publish PR evidence and release claim
+
+## Regression evidence
+
+The corrected assertions and fixtures fail against original production code `de95346`: 26 PASS / 21 FAIL / 47. The repaired implementation passes 47/47. The initial unmodified code and tests were 1 PASS / 17 FAIL / 18. All executions were real Jest runs; structured reports and logs are in the task runtime directory outside Git.

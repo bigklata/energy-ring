@@ -28,7 +28,7 @@ rg -l '"<area>"|"<module>"|"<topic>"' .ai/lessons/*.md
 
 ### integration
 
-- [Use UTC intervals to identify repeated PSE hours](lessons/pse-dst-utc-intervals.md) — area:integration,spec-pr; module:rdn_forecast; topic:dst,source-contract,provider-evidence
+- [Use UTC intervals to identify repeated PSE hours](lessons/pse-dst-utc-intervals.md) — area:integration,spec-pr,debugging,testing; module:rdn_forecast; topic:dst,source-contract,provider-evidence,baseline,test-oracle
 
 ### spec-pr
 

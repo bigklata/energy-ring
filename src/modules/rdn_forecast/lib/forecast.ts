@@ -55,7 +55,7 @@ export type BaselineComputeResult = {
   points: BaselinePointResult[]
   /** Local labels whose autumn baseline day repeated them and was tie-broken. */
   tieBrokenLabels: string[]
-  /** Local labels on D whose baseline day lacked them (spring-short baseline). */
+  /** Labels using one baseline because the other calendar day skipped that label. */
   dstFallbackLabels: string[]
 }
 
@@ -83,7 +83,7 @@ const TZ_DEFAULT = 'Europe/Warsaw'
 const MTU_MS = 15 * 60 * 1000
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/
-const LOCAL_LABEL = /^([01]\d|2[0-3]):[0-5]\d$/
+const LOCAL_LABEL = /^([01]\d|2[0-3]):(00|15|30|45)$/
 
 function requireDate(value: string, field: string): Date {
   if (typeof value !== 'string' || !ISO_DATE.test(value)) {
@@ -101,15 +101,18 @@ function requireInstant(value: string, field: string): number {
     throw new BaselineInputError(field, 'expected an ISO-8601 UTC instant')
   }
   const parsed = Date.parse(value)
-  if (Number.isNaN(parsed)) {
+  if (Number.isNaN(parsed) || new Date(parsed).toISOString().slice(0, 19) !== value.slice(0, 19)) {
     throw new BaselineInputError(field, 'not a real instant')
+  }
+  if (parsed % MTU_MS !== 0 || /\.\d*[1-9]\d*Z$/.test(value)) {
+    throw new BaselineInputError(field, 'instant is not on a quarter-hour boundary')
   }
   return parsed
 }
 
 function requireLabel(value: string, field: string): string {
   if (typeof value !== 'string' || !LOCAL_LABEL.test(value)) {
-    throw new BaselineInputError(field, 'expected HH:MM')
+    throw new BaselineInputError(field, 'expected a quarter-hour HH:MM label')
   }
   return value
 }
@@ -130,12 +133,17 @@ function requirePoints(value: unknown, field: string): BaselinePoint[] {
 }
 
 function makeLocalPartsFormatter(timeZone: string): (instant: number) => { date: string; label: string } {
-  const formatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hourCycle: 'h23',
-  })
+  let formatter: Intl.DateTimeFormat
+  try {
+    formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hourCycle: 'h23',
+    })
+  } catch {
+    throw new BaselineInputError('timezone', 'expected an IANA timezone')
+  }
   return (instant: number) => {
     const values: Record<string, string> = {}
     for (const { type, value } of formatter.formatToParts(new Date(instant))) {
@@ -143,10 +151,6 @@ function makeLocalPartsFormatter(timeZone: string): (instant: number) => { date:
     }
     return { date: `${values.year}-${values.month}-${values.day}`, label: `${values.hour}:${values.minute}` }
   }
-}
-
-function localPartsOfInstant(instant: string, timeZone: string): { date: string; label: string } {
-  return makeLocalPartsFormatter(timeZone)(Date.parse(instant))
 }
 
 /**
@@ -172,16 +176,24 @@ type IndexedPoint = BaselinePoint & {
   localDate: string
 }
 
-function indexPoints(points: BaselinePoint[], field: string, timeZone: string, dayIso: string | null): IndexedPoint[] {
-  const indexed = points.map((point, i) => {
+function indexPoints(points: BaselinePoint[], field: string, timeZone: string, dayIso: string): IndexedPoint[] {
+  const localParts = makeLocalPartsFormatter(timeZone)
+  const indexed = Array.from(points, (point, i) => {
+    if (point === null || typeof point !== 'object') {
+      throw new BaselineInputError(`${field}[${i}]`, 'expected a point object')
+    }
     const startMs = requireInstant(point.intervalStartUtc, `${field}[${i}].intervalStartUtc`)
     const endMs = requireInstant(point.intervalEndUtc, `${field}[${i}].intervalEndUtc`)
     if (endMs - startMs !== MTU_MS) {
       throw new BaselineInputError(`${field}[${i}]`, 'interval is not exactly 15 minutes')
     }
     const label = requireLabel(point.localLabel, `${field}[${i}].localLabel`)
-    const local = localPartsOfInstant(point.intervalStartUtc, timeZone)
-    if (dayIso !== null && local.date !== dayIso) {
+    const local = localParts(startMs)
+    requireDate(point.localDate, `${field}[${i}].localDate`)
+    if (point.localDate !== local.date) {
+      throw new BaselineInputError(`${field}[${i}].localDate`, 'disagrees with the interval local date')
+    }
+    if (local.date !== dayIso) {
       throw new BaselineInputError(
         `${field}[${i}]`,
         `${point.intervalStartUtc} is on local ${timeZone} date ${local.date}, expected ${dayIso}`,
@@ -198,52 +210,42 @@ function indexPoints(points: BaselinePoint[], field: string, timeZone: string, d
       startMs,
       endMs,
       localDate: local.date,
+      value: requirePrice(point.value, `${field}[${i}].value`),
     }
   })
-  const byStart = new Map<string, IndexedPoint>()
+  const byStart = new Map<number, IndexedPoint>()
   for (const point of indexed) {
-    const key = point.intervalStartUtc
+    const key = point.startMs
     if (byStart.has(key)) {
       throw new BaselineInputError(`${field}`, `duplicate interval start ${key}`)
     }
     byStart.set(key, point)
   }
-  return indexed
+  return indexed.sort((a, b) => a.startMs - b.startMs)
 }
 
-type BaselineLookup = {
-  byLabel: Map<string, IndexedPoint[]>
-  /** Labels with no point on this baseline day (the skipped spring hour). */
-  missingLabels: Set<string>
-}
+type BaselineLookup = Map<string, IndexedPoint[]>
 
-function buildLookup(points: IndexedPoint[], labels: Set<string>): BaselineLookup {
-  const byLabel = new Map<string, IndexedPoint[]>()
-  for (const label of labels) {
-    byLabel.set(label, [])
-  }
+function buildLookup(points: IndexedPoint[]): BaselineLookup {
+  const byLabel: BaselineLookup = new Map()
+  // indexPoints is already sorted by UTC; the first point is the fixed DST tie-break.
+  // Normal baseline days may contain labels absent from a spring delivery day.
   for (const point of points) {
-    const group = byLabel.get(point.localLabel)
-    if (group === undefined) {
-      throw new BaselineInputError(
-        'baseline',
-        `label ${point.localLabel} (${point.intervalStartUtc}) is outside the delivery day's MTU set`,
-      )
-    }
+    const group = byLabel.get(point.localLabel) ?? []
     group.push(point)
+    byLabel.set(point.localLabel, group)
   }
-  for (const group of byLabel.values()) {
-    group.sort((a, b) => a.startMs - b.startMs)
-  }
-  const missingLabels = new Set<string>()
-  for (const [label, group] of byLabel) {
-    if (group.length === 0) missingLabels.add(label)
-  }
-  return { byLabel, missingLabels }
+  return byLabel
 }
 
-function expectedMtuOfDay(dateIso: string, timeZone: string): number {
-  return dayUtcStarts(dateIso, timeZone).length
+function shiftCalendarDate(date: Date, days: number): string {
+  // This operates on the date-only UTC representation, not on a Warsaw midnight.
+  return new Date(date.getTime() + days * 86_400_000).toISOString().slice(0, 10)
+}
+
+function labelsOfDay(dateIso: string, timeZone: string): Set<string> {
+  const localParts = makeLocalPartsFormatter(timeZone)
+  return new Set(dayUtcStarts(dateIso, timeZone).map((start) => localParts(start).label))
 }
 
 function missingReason(point: IndexedPoint | undefined): MissingBaselineReason | null {
@@ -255,7 +257,7 @@ function pickBaseline(lookup: BaselineLookup, label: string): {
   point: IndexedPoint | undefined
   tieBroken: boolean
 } {
-  const group = lookup.byLabel.get(label) ?? []
+  const group = lookup.get(label) ?? []
   if (group.length === 0) return { point: undefined, tieBroken: false }
   if (group.length === 1) return { point: group[0], tieBroken: false }
   // §4 rule 3: an autumn baseline day repeats the local label twice.
@@ -278,8 +280,8 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
   const deliveryIso = deliveryDate.toISOString().slice(0, 10)
 
   const target = indexPoints(requirePoints(input.targetPoints, 'targetPoints'), 'targetPoints', timeZone, deliveryIso)
-  const d1 = indexPoints(requirePoints(input.baselineD1Points, 'baselineD1Points'), 'baselineD1Points', timeZone, null)
-  const d7 = indexPoints(requirePoints(input.baselineD7Points, 'baselineD7Points'), 'baselineD7Points', timeZone, null)
+  const d1 = indexPoints(requirePoints(input.baselineD1Points, 'baselineD1Points'), 'baselineD1Points', timeZone, shiftCalendarDate(deliveryDate, -1))
+  const d7 = indexPoints(requirePoints(input.baselineD7Points, 'baselineD7Points'), 'baselineD7Points', timeZone, shiftCalendarDate(deliveryDate, -7))
 
   if (target.length === 0) {
     throw new BaselineInputError('targetPoints', 'D must have at least one MTU')
@@ -294,9 +296,9 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
     }
   }
 
-  const d1Lookup = buildLookup(d1, seenLabels)
-  const d7Lookup = buildLookup(d7, seenLabels)
-  const expectedMtu = expectedMtuOfDay(deliveryIso, timeZone)
+  const d1Lookup = buildLookup(d1)
+  const d7Lookup = buildLookup(d7)
+  const expectedMtu = dayUtcStarts(deliveryIso, timeZone).length
   if (target.length !== expectedMtu) {
     throw new BaselineInputError(
       'targetPoints',
@@ -304,7 +306,10 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
     )
   }
 
-  const absentLocalLabels = labels.filter((label) => d1Lookup.missingLabels.has(label) && d7Lookup.missingLabels.has(label))
+  const allLabels = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`)
+  const absentLocalLabels = allLabels.filter((label) => !seenLabels.has(label))
+  const d1CalendarLabels = labelsOfDay(shiftCalendarDate(deliveryDate, -1), timeZone)
+  const d7CalendarLabels = labelsOfDay(shiftCalendarDate(deliveryDate, -7), timeZone)
   const tieBrokenLabels = new Set<string>()
   const dstFallbackLabels = new Set<string>()
 
@@ -327,7 +332,9 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
       blockedCode = 'blocked_forecast'
     } else if (d1Available !== d7Available) {
       baselineFallback = d1Available ? 'd1_only' : 'd7_only'
-      dstFallbackLabels.add(point.localLabel)
+      if (!d1CalendarLabels.has(point.localLabel) || !d7CalendarLabels.has(point.localLabel)) {
+        dstFallbackLabels.add(point.localLabel)
+      }
     }
 
     return {

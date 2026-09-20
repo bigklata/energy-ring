@@ -11,7 +11,7 @@
  * - `2026-10-26` (ordinary, +1):                96 MTU
  * - `2026-09-20`/`2026-09-21` (ordinary, +2):   96 MTU
  *
- * Prices are a stable deterministic function of the local label, so the
+ * Prices distinguish calendar dates and repeated local labels, so the
  * expected values in the tests are exact and the two autumn 02:xx
  * occurrences provably carry different values (no accidental average).
  */
@@ -21,10 +21,10 @@ import type { BaselinePoint } from '../lib/forecast'
 const TZ = 'Europe/Warsaw'
 const MTU_MS = 15 * 60 * 1000
 
-function priceFor(label: string): number {
+function priceFor(label: string, dateIso: string, occurrence: number): number {
   const hh = Number(label.slice(0, 2))
   const mm = Number(label.slice(3, 5))
-  return 300 + hh * 2.5 + mm * 0.1
+  return 300 + Number(dateIso.slice(-2)) + hh * 2.5 + mm * 0.1 + occurrence * 100
 }
 
 function shiftIsoDate(dateIso: string, days: number): string {
@@ -46,10 +46,11 @@ export function dayPoints(dateIso: string, timeZone: string = TZ): BaselinePoint
     hourCycle: 'h23',
   })
   const points: BaselinePoint[] = []
+  const occurrences = new Map<string, number>()
   // The local day can start before (short days) or end after (long days)
   // the surrounding UTC midnights, so scan a bounded UTC grid around the
   // date and keep only the quarter-hours whose local calendar date matches.
-  for (let instant = dayStartUtc - MTU_MS; instant < nextDayUtc + MTU_MS; instant += MTU_MS) {
+  for (let instant = dayStartUtc - 24 * 60 * 60 * 1000; instant < nextDayUtc + 24 * 60 * 60 * 1000; instant += MTU_MS) {
     const values = formatter
       .formatToParts(new Date(instant))
       .reduce<Record<string, string>>((acc, { type, value }) => {
@@ -60,41 +61,15 @@ export function dayPoints(dateIso: string, timeZone: string = TZ): BaselinePoint
     if (localDate !== dateIso) continue
     const label = `${values.hour}:${values.minute}`
     const startIso = new Date(instant).toISOString()
+    const occurrence = occurrences.get(label) ?? 0
+    occurrences.set(label, occurrence + 1)
     points.push({
       intervalStartUtc: startIso,
       intervalEndUtc: isoAddMs(startIso, MTU_MS),
       localLabel: label,
       localDate,
-      value: priceFor(label),
+      value: priceFor(label, dateIso, occurrence),
     })
   }
   return points
-}
-
-export const ordinaryDeliveryDay = dayPoints('2026-09-21')
-export const springDeliveryDay = dayPoints('2026-03-30')
-export const autumnDeliveryDay = dayPoints('2026-10-25')
-export const autumnOrdinaryDay = dayPoints('2026-10-26')
-
-/**
- * Baseline days for the rule-2/3 DST fixtures: the spring days are short on
- * purpose (no 02:xx), the autumn day repeats 02:xx with distinct values so
- * the tie-break is observable.
- */
-export const springBaselineDay = {
-  d1: dayPoints('2026-03-29'),
-  d7: dayPoints('2026-03-23'),
-  ordinary: dayPoints('2026-03-23'),
-}
-
-export const autumnOrdinaryBaseline = {
-  dTarget: dayPoints('2026-10-26'),
-  d1: autumnDeliveryDay,
-  d7: dayPoints('2026-10-18'),
-}
-
-/** Baseline days for the ordinary-day fixtures. */
-export const ordinaryOrdinaryBaseline = {
-  d1: dayPoints('2026-09-20'),
-  d7: dayPoints('2026-09-14'),
 }
