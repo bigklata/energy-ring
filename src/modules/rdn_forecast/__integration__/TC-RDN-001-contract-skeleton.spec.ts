@@ -26,6 +26,11 @@ const PASSWORD = 'Rdn-Forecast-1!'
 type ListBody = { items?: Array<Record<string, unknown>>; page?: { limit?: number; nextCursor?: string | null } }
 type ErrorBody = { code?: string; messageKey?: string; correlationId?: string; requiredFeatures?: string[] }
 
+/**
+ * Creates the role and the user, and removes whatever it already created if a
+ * later step throws — otherwise a failure between the two leaves an orphan role
+ * (or user) behind, because the caller's `finally` never receives the ids.
+ */
 async function createUserWithFeatures(
   request: APIRequestContext,
   adminToken: string,
@@ -34,19 +39,29 @@ async function createUserWithFeatures(
 ): Promise<{ roleId: string; userId: string; token: string }> {
   const { organizationId } = getTokenContext(adminToken)
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  const roleId = await createRoleFixture(request, adminToken, { name: `rdn-${label}-${stamp}` })
-  await setRoleAclFeatures(request, adminToken, { roleId, features })
   const email = `rdn-${label}-${stamp}@example.com`
-  const userId = await createUserFixture(request, adminToken, {
-    email,
-    password: PASSWORD,
-    organizationId,
-    roles: [roleId],
-    name: `RDN ${label}`,
-  })
-  const token = await getAuthToken(request, email, PASSWORD)
-  return { roleId, userId, token }
+  let roleId: string | null = null
+  let userId: string | null = null
+  try {
+    roleId = await createRoleFixture(request, adminToken, { name: `rdn-${label}-${stamp}` })
+    await setRoleAclFeatures(request, adminToken, { roleId, features })
+    userId = await createUserFixture(request, adminToken, {
+      email,
+      password: PASSWORD,
+      organizationId,
+      roles: [roleId],
+      name: `RDN ${label}`,
+    })
+    const token = await getAuthToken(request, email, PASSWORD)
+    return { roleId, userId, token }
+  } catch (err) {
+    await deleteUserIfExists(request, adminToken, userId)
+    await deleteRoleIfExists(request, adminToken, roleId)
+    throw err
+  }
 }
+
+const COMMAND_RESOURCES = ['batches', 'runs', 'evaluations'] as const
 
 const validImport = { sourceSeriesId: FIXTURE_SOURCE_ID, deliveryDate: '2026-09-21', idempotencyKey: 'tc-rdn-001-import', cursor: null }
 const validRun = {
@@ -70,8 +85,15 @@ test.describe('TC-RDN-001: rdn_forecast contract skeleton', () => {
       const response = await request.get(`${BASE}/${resource}`)
       expect(response.status(), `GET ${resource} without auth`).toBe(401)
     }
-    const post = await request.post(`${BASE}/batches`, { data: validImport })
-    expect(post.status()).toBe(401)
+    const payloads: Record<(typeof COMMAND_RESOURCES)[number], unknown> = {
+      batches: validImport,
+      runs: validRun,
+      evaluations: validEvaluate,
+    }
+    for (const resource of COMMAND_RESOURCES) {
+      const post = await request.post(`${BASE}/${resource}`, { data: payloads[resource] })
+      expect(post.status(), `POST ${resource} without auth`).toBe(401)
+    }
   })
 
   test('read-only user lists all four resources and is denied every command', async ({ request }) => {
@@ -169,15 +191,22 @@ test.describe('TC-RDN-001: rdn_forecast contract skeleton', () => {
       expect(evaluationBody?.evaluationId).toMatch(uuid)
 
       const { tenantId, organizationId } = getTokenContext(adminToken)
-      const withScope = await apiRequest(request, 'POST', `${BASE}/batches`, {
-        token,
-        data: { ...validImport, tenantId, organizationId },
-      })
-      expect(withScope.status(), 'client-sent scope must be rejected').toBe(422)
-      const withScopeBody = await readJsonSafe<ErrorBody>(withScope)
-      expect(withScopeBody?.code).toBe('invalid_contract')
-      expect(withScopeBody?.messageKey).toBe('rdn_forecast.errors.invalid_contract')
-      expect(typeof withScopeBody?.correlationId).toBe('string')
+      const commandPayloads: Array<[(typeof COMMAND_RESOURCES)[number], Record<string, unknown>]> = [
+        ['batches', validImport],
+        ['runs', validRun],
+        ['evaluations', validEvaluate],
+      ]
+      for (const [resource, data] of commandPayloads) {
+        const withScope = await apiRequest(request, 'POST', `${BASE}/${resource}`, {
+          token,
+          data: { ...data, tenantId, organizationId },
+        })
+        expect(withScope.status(), `client-sent scope must be rejected on ${resource}`).toBe(422)
+        const withScopeBody = await readJsonSafe<ErrorBody>(withScope)
+        expect(withScopeBody?.code).toBe('invalid_contract')
+        expect(withScopeBody?.messageKey).toBe('rdn_forecast.errors.invalid_contract')
+        expect(typeof withScopeBody?.correlationId).toBe('string')
+      }
 
       const unknownSource = await apiRequest(request, 'POST', `${BASE}/batches`, {
         token,
@@ -200,6 +229,27 @@ test.describe('TC-RDN-001: rdn_forecast contract skeleton', () => {
 
       const badLimit = await apiRequest(request, 'GET', `${BASE}/sources?limit=0`, { token })
       expect(badLimit.status()).toBe(422)
+
+      // A format-only date regex would let `2026-02-30` through as a delivery
+      // date; the contract accepts real calendar days only, on every command.
+      const nonExistentDates: Array<[string, string, Record<string, unknown>]> = [
+        ['batches', '2026-02-30', { ...validImport, deliveryDate: '2026-02-30' }],
+        ['batches', '2026-02-29', { ...validImport, deliveryDate: '2026-02-29' }],
+        ['runs', '2026-02-30', { ...validRun, deliveryDate: '2026-02-30' }],
+        ['evaluations', 'window.from', { ...validEvaluate, evaluationWindow: { from: '2026-02-30', to: '2026-09-21' } }],
+        ['evaluations', 'window.to', { ...validEvaluate, evaluationWindow: { from: '2026-09-21', to: '2026-02-29' } }],
+      ]
+      for (const [resource, label, data] of nonExistentDates) {
+        const response = await apiRequest(request, 'POST', `${BASE}/${resource}`, { token, data })
+        expect(response.status(), `POST ${resource} with ${label} must be rejected`).toBe(422)
+        expect((await readJsonSafe<ErrorBody>(response))?.code).toBe('invalid_contract')
+      }
+
+      const leapDay = await apiRequest(request, 'POST', `${BASE}/evaluations`, {
+        token,
+        data: { ...validEvaluate, evaluationWindow: { from: '2028-02-29', to: '2028-02-29' } },
+      })
+      expect(leapDay.status(), 'an existing leap day must still be accepted').toBe(202)
     } finally {
       await deleteUserIfExists(request, adminToken, fixture?.userId ?? null)
       await deleteRoleIfExists(request, adminToken, fixture?.roleId ?? null)

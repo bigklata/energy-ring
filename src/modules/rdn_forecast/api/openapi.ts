@@ -7,13 +7,14 @@ import {
   rdnForecastModeSchema,
   rdnForecastRunStatusSchema,
   rdnImportBatchStatusSchema,
+  rdnIsoDateSchema,
   rdnQualitySummarySchema,
   rdnSourceRoleSchema,
 } from '../data/validators'
 
 export const rdnForecastTag = 'RDN Forecast'
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+const isoDate = rdnIsoDateSchema
 
 export const rdnListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),

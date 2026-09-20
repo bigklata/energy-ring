@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { rdnForecastModeSchema } from '../data/validators'
+import { rdnForecastModeSchema, rdnIsoDateSchema } from '../data/validators'
 
 /**
  * Command inputs from the technical contract ("Commands and API contracts").
@@ -7,7 +7,7 @@ import { rdnForecastModeSchema } from '../data/validators'
  * `organizationId` is a 422, never a scope override.
  */
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+const isoDate = rdnIsoDateSchema
 const idempotencyKey = z.string().min(1).max(200)
 
 export const rdnImportCommandSchema = z
