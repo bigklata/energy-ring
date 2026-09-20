@@ -129,20 +129,41 @@ function requirePoints(value: unknown, field: string): BaselinePoint[] {
   return value as BaselinePoint[]
 }
 
-function shiftLocalDate(date: Date, days: number): string {
-  const shifted = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days)
-  return new Date(shifted).toISOString().slice(0, 10)
-}
-
-function localPartsOfInstant(instant: string, timeZone: string): { date: string; label: string } {
-  const parts = new Intl.DateTimeFormat('en-GB', {
+function makeLocalPartsFormatter(timeZone: string): (instant: number) => { date: string; label: string } {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
     timeZone,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
     hourCycle: 'h23',
-  }).formatToParts(new Date(instant)).map(({ type, value }) => [type, value])
-  const values = Object.fromEntries(parts)
-  return { date: `${values.year}-${values.month}-${values.day}`, label: `${values.hour}:${values.minute}` }
+  })
+  return (instant: number) => {
+    const values: Record<string, string> = {}
+    for (const { type, value } of formatter.formatToParts(new Date(instant))) {
+      values[type] = value
+    }
+    return { date: `${values.year}-${values.month}-${values.day}`, label: `${values.hour}:${values.minute}` }
+  }
+}
+
+function localPartsOfInstant(instant: string, timeZone: string): { date: string; label: string } {
+  return makeLocalPartsFormatter(timeZone)(Date.parse(instant))
+}
+
+/**
+ * Enumerate the true quarter-hours of one local calendar day in `timeZone` by
+ * scanning a bounded UTC grid (±48h around the date's UTC midnight) and
+ * keeping the starts whose local date matches `dateIso`. The grid always
+ * contains the whole local day, and DST transitions (92/96/100 MTU days) fall
+ * out of the local-date filter instead of any hardcoded rule.
+ */
+function dayUtcStarts(dateIso: string, timeZone: string): number[] {
+  const dayStartUtc = Date.parse(`${dateIso}T00:00:00.000Z`)
+  const localParts = makeLocalPartsFormatter(timeZone)
+  const starts: number[] = []
+  for (let instant = dayStartUtc - 48 * 60 * 60 * 1000; instant < dayStartUtc + 48 * 60 * 60 * 1000; instant += MTU_MS) {
+    if (localParts(instant).date === dateIso) starts.push(instant)
+  }
+  return starts
 }
 
 type IndexedPoint = BaselinePoint & {
@@ -222,14 +243,7 @@ function buildLookup(points: IndexedPoint[], labels: Set<string>): BaselineLooku
 }
 
 function expectedMtuOfDay(dateIso: string, timeZone: string): number {
-  const dayStartUtc = Date.parse(`${dateIso}T00:00:00.000Z`)
-  const nextDayUtc = Date.parse(`${shiftLocalDate(new Date(dayStartUtc), 1)}T00:00:00.000Z`)
-  const first = localPartsOfInstant(new Date(dayStartUtc).toISOString(), timeZone)
-  const last = localPartsOfInstant(new Date(nextDayUtc - 1).toISOString(), timeZone)
-  if (first.date !== last.date) {
-    return first.date === dateIso ? 92 : 100
-  }
-  return Math.round((nextDayUtc - dayStartUtc) / MTU_MS)
+  return dayUtcStarts(dateIso, timeZone).length
 }
 
 function missingReason(point: IndexedPoint | undefined): MissingBaselineReason | null {

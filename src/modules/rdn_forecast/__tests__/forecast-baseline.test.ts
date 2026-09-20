@@ -11,7 +11,7 @@ import {
   ordinaryOrdinaryBaseline,
   springBaselineDay,
   springDeliveryDay,
-} from './fixtures/baseline-fixture-data'
+} from '../__fixtures__/baseline-fixture-data'
 
 function byLabel(points: Array<ReturnType<typeof computeBaselines>['points'][number]>, label: string) {
   return points.filter((p) => p.localLabel === label)

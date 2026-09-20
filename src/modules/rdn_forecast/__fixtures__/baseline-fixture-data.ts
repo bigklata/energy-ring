@@ -16,9 +16,10 @@
  * occurrences provably carry different values (no accidental average).
  */
 
-import { BaselinePoint } from '../../lib/forecast'
+import type { BaselinePoint } from '../lib/forecast'
 
 const TZ = 'Europe/Warsaw'
+const MTU_MS = 15 * 60 * 1000
 
 function priceFor(label: string): number {
   const hh = Number(label.slice(0, 2))
@@ -45,7 +46,10 @@ export function dayPoints(dateIso: string, timeZone: string = TZ): BaselinePoint
     hourCycle: 'h23',
   })
   const points: BaselinePoint[] = []
-  for (let instant = dayStartUtc; instant < nextDayUtc; instant += 15 * 60 * 1000) {
+  // The local day can start before (short days) or end after (long days)
+  // the surrounding UTC midnights, so scan a bounded UTC grid around the
+  // date and keep only the quarter-hours whose local calendar date matches.
+  for (let instant = dayStartUtc - MTU_MS; instant < nextDayUtc + MTU_MS; instant += MTU_MS) {
     const values = formatter
       .formatToParts(new Date(instant))
       .reduce<Record<string, string>>((acc, { type, value }) => {
@@ -58,7 +62,7 @@ export function dayPoints(dateIso: string, timeZone: string = TZ): BaselinePoint
     const startIso = new Date(instant).toISOString()
     points.push({
       intervalStartUtc: startIso,
-      intervalEndUtc: isoAddMs(startIso, 15 * 60 * 1000),
+      intervalEndUtc: isoAddMs(startIso, MTU_MS),
       localLabel: label,
       localDate,
       value: priceFor(label),
