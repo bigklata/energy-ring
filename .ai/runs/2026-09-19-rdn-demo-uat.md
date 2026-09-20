@@ -36,10 +36,10 @@ RDN runtime, panel, and API remain incomplete. These documents are preparation o
 
 ### Phase 1: Host and replay guide
 
-- [x] 1.1 Document clean-clone host setup and replay prerequisites — 0c75791
-- [x] 1.2 Make replay provenance and incomplete-flow status explicit — 0c75791
+- [x] 1.1 Document clean-clone host setup and replay prerequisites — 111713f
+- [x] 1.2 Make replay provenance and incomplete-flow status explicit — e296ebd
 
 ### Phase 2: Independent acceptance guide
 
-- [x] 2.1 Document independent live UAT evidence and time windows — 0c75791
+- [x] 2.1 Document independent live UAT evidence and time windows — a1a8170
 - [x] 2.2 Document final rehearsal, cuts, and blockers — 0c75791
