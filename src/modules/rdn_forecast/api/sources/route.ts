@@ -1,6 +1,6 @@
 import type { OpenApiRouteDoc } from '@open-mercato/shared/lib/openapi'
-import { listResponse, parseQuery, resolveRdnRequestContext, withRdnErrors } from '../context'
-import { rdnFixtureSources } from '../fixtures'
+import { parseQuery, resolveRdnRequestContext, withRdnErrors } from '../context'
+import { listPersisted } from '../persisted'
 import {
   rdnForecastTag,
   rdnListResponseSchema,
@@ -15,9 +15,9 @@ export const metadata = {
 
 export async function GET(request: Request): Promise<Response> {
   return withRdnErrors(request, async () => {
-    await resolveRdnRequestContext(request)
+    const ctx = await resolveRdnRequestContext(request)
     const query = parseQuery(request, rdnSourcesQuerySchema)
-    return listResponse(rdnFixtureSources, query.limit)
+    return listPersisted(ctx, 'sources', query)
   })
 }
 
@@ -27,7 +27,7 @@ export const openApi: OpenApiRouteDoc = {
   methods: {
     GET: {
       summary: 'List source series',
-      description: 'Contract stub (#20): serves the committed contract fixture, not tenant data.',
+      description: 'Reads persisted records in the authenticated tenant and organization.',
       tags: [rdnForecastTag],
       query: rdnSourcesQuerySchema,
       responses: [{ status: 200, description: 'Source series page.', schema: rdnListResponseSchema(rdnSourceItemSchema) }],

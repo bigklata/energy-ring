@@ -70,7 +70,7 @@ export async function withRdnErrors(request: Request, handler: () => Promise<Res
 export type RdnListPage<T> = {
   items: T[]
   page: { limit: number; nextCursor: string | null }
-  meta: { source: 'fixture' }
+  meta: { source: 'fixture' | 'database' }
 }
 
 export function listResponse<T>(items: readonly T[], limit: number): Response {

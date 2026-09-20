@@ -62,6 +62,8 @@ export interface PseGetOptions {
   timeoutMs?: number
   maxAttempts?: number
   baseDelayMs?: number
+  initialCursor?: string | null
+  maxItems?: number
 }
 
 export interface PsePage<T> {
@@ -253,7 +255,11 @@ export class PseClient {
 
   /** Fetches every provider page, following only provider-issued allowlisted cursors. */
   async getAll<T = unknown>(options: PseGetOptions): Promise<T[]> {
-    let cursor: URL | undefined = this.buildUrl(options)
+    let cursor: URL | undefined = options.initialCursor ? validateNextLink(options.initialCursor) : this.buildUrl(options)
+    if (cursor?.pathname !== this.buildUrl(options).pathname) {
+      throw new PseClientError('PSE cursor changed endpoint', 'host_not_allowed')
+    }
+    const maxItems = options.maxItems === undefined ? Infinity : assertPositiveInteger(options.maxItems, 'maxItems')
     const maxAttempts = assertPositiveInteger(options.maxAttempts ?? this.maxAttempts, 'maxAttempts')
     const baseDelayMs = assertPositiveFinite(options.baseDelayMs ?? this.baseDelayMs, 'baseDelayMs')
     const timeoutMs = assertPositiveFinite(options.timeoutMs ?? this.timeoutMs, 'timeoutMs')
@@ -271,6 +277,7 @@ export class PseClient {
         const identity = stableIdentity(item)
         if (!seenItems.has(identity)) {
           seenItems.add(identity)
+          if (items.length >= maxItems) throw new PseClientError('PSE item limit exceeded', 'invalid_response')
           items.push(item)
         }
       }
