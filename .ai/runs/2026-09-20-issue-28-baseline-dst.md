@@ -35,8 +35,8 @@ PR: #66
 
 ### Phase 2: Verify and deliver
 
-- [ ] 2.1 Complete configured gates and independent review
-- [ ] 2.2 Publish PR evidence and release claim
+- [x] 2.1 Complete configured gates and independent review — 58677e9; all six local commands exit0, 150/150 tests, independent review approve after the missing-first-occurrence fix.
+- [x] 2.2 Publish PR evidence and release claim — PR #66 contains the full review and verification summary; the active implementation claim is handed back to team review.
 
 ## Regression evidence
 
@@ -45,3 +45,14 @@ The corrected assertions and fixtures fail against original production code `de9
 ## Independent review follow-up
 
 The reviewer found that a missing first autumn occurrence incorrectly selected the second available row. Two new regressions (D-1 and D-7) fail on f1526fd, then pass with calendar-derived first-occurrence selection. The first full gate reached five PASS commands; its build was explicitly cancelled (exit 143) because this finding invalidated that version. That preliminary run started before the repair commit and is not final commit evidence. A new complete gate runs only after the review fix is committed.
+
+## Delivery evidence and handoff
+
+- Product commit: `58677e9dd24a7e240d71f9238d130eb8b731ef48`; clean worktree before final gate.
+- `yarn generate`, `yarn typecheck`, `yarn lint`, `yarn ds:check`, `yarn test`, `yarn build`: all exit 0. Full Jest: 150/150 tests, 9/9 suites; task-specific Jest: 49/49.
+- Independent reviewer: no outstanding blocker/major after the review fix. Full report and summary are comments on PR #66. Same-account `COMMENT` review is not a formal GitHub approval.
+- The final handoff commit changes only this plan. Product files remain byte-identical to the tested/reviewed product commit.
+- GitHub `ci` for the final PR HEAD remains mandatory; its live result and exact SHA are recorded in the PR summary, not asserted early in this plan. Do not merge or close #28 until it is green and the required teammate review is approved.
+- No UI/API/database change; no dev/stage environment or screenshot is needed for this `verify:unit` scope. No QA bypass label or automatic acceptance is applied.
+- Keep #28 on `agent-hold` to avoid duplicate Cezar implementation while PR #66 awaits team review. Periodic Codex supervision stays paused.
+- Reproducible local logs and state: `work/data/private/workstation-runtime/projects/energy-ring-issue28-direct/` on Marek's host. The worktree may be removed after handoff; the pushed branch and this plan are the durable continuation point.
