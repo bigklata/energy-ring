@@ -29,8 +29,10 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 TENANT="aaaaaaaa-0000-0000-0000-000000000001"
+TENANT2="aaaaaaaa-0000-0000-0000-000000000002"
 ORG="bbbbbbbb-0000-0000-0000-000000000001"
 ORG2="bbbbbbbb-0000-0000-0000-000000000002"
+ORG3="bbbbbbbb-0000-0000-0000-000000000003"
 SERIES="cccccccc-0000-0000-0000-000000000001"
 BATCH1="11111111-1111-1111-1111-111111111111"
 BATCH2="22222222-2222-2222-2222-222222222222"
@@ -84,8 +86,9 @@ process.stdout.write(sql.join("\n"))
 ' "$MIGRATION")"
 
 migrate() {
-  DATABASE_URL="postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG_PORT/$DB_NAME" yarn db:migrate 2>&1 \
-    | sed 's/\x1b\[[0-9;]*m//g' | grep -E "rdn_forecast: [0-9]+ migration" || true
+  # Keep the real exit status and full diagnostics. A successful RDN summary
+  # does not mean another module's migration succeeded.
+  DATABASE_URL="postgres://$PG_USER:$PG_PASSWORD@$PG_HOST:$PG_PORT/$DB_NAME" yarn db:migrate
 }
 
 echo "=== 0. clean database: $DB_NAME ==="
@@ -136,6 +139,13 @@ expect_ok "same key in another organization is accepted" <<SQL
 begin;
 insert into rdn_forecast_import_batches (tenant_id, organization_id, source_series_id, delivery_date, provider_revision, received_at_utc, quality_summary, created_at, updated_at, idempotency_key, request_fingerprint)
 values ('$TENANT','$ORG2','$SERIES','2026-09-20','rev-1', now(), '{}'::jsonb, now(), now(), 'legacy:$BATCH1','fp-x');
+rollback;
+SQL
+
+expect_ok "same key in another tenant is accepted" <<SQL
+begin;
+insert into rdn_forecast_import_batches (tenant_id, organization_id, source_series_id, delivery_date, provider_revision, received_at_utc, quality_summary, created_at, updated_at, idempotency_key, request_fingerprint)
+values ('$TENANT2','$ORG3','$SERIES','2026-09-20','rev-1', now(), '{}'::jsonb, now(), now(), 'legacy:$BATCH1','fp-x');
 rollback;
 SQL
 
