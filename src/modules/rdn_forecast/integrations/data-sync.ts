@@ -1,3 +1,5 @@
+import type { RdnImportPointCreateInput } from '../data/validators'
+
 /** Pure PSE row adapters. Persistence, quality acceptance and cutoff checks belong to the import command. */
 export type PseMtu = {
   intervalStartUtc: string
@@ -37,6 +39,11 @@ export type CsdacPlnTargetPoint = PseMtu & {
   fetchedAtUtc: string
   providerKey: string
 }
+
+export type RdnImportPointContext = Pick<
+  RdnImportPointCreateInput,
+  'batchId' | 'sourceSeriesId' | 'providerRevision'
+>
 
 export class PseInputRowError extends Error {
   constructor(field: string) {
@@ -145,6 +152,26 @@ export function parseCsdacPlnRow(input: unknown, fetchedAtUtc: string): CsdacPln
     publicationTsUtc,
     fetchedAtUtc: utcTimestamp(fetchedAtUtc, 'fetchedAtUtc'),
     providerKey: `pse:csdac-pln:${interval.intervalStartUtc}:${publicationTsUtc}`,
+  }
+}
+
+/** Map a parsed target row to the persistence command shape without losing nulls or negative prices. */
+export function mapCsdacPlnTargetPoint(
+  point: CsdacPlnTargetPoint,
+  context: RdnImportPointContext,
+): RdnImportPointCreateInput {
+  return {
+    ...context,
+    intervalStartUtc: new Date(point.intervalStartUtc),
+    intervalEndUtc: new Date(point.intervalEndUtc),
+    localDate: point.localDate,
+    localLabel: point.localLabel,
+    value: point.value === null ? null : String(point.value),
+    unit: point.unit,
+    publicationTsUtc: new Date(point.publicationTsUtc),
+    fetchedAtUtc: new Date(point.fetchedAtUtc),
+    providerKey: point.providerKey,
+    rejectionCodes: [],
   }
 }
 
