@@ -62,15 +62,18 @@ export const importCommand: CommandHandler<unknown, RdnImportAccepted> = {
           const duplicate = await findOneWithDecryption(em, RdnImportBatch,
             { ...scope, sourceSeriesId: source.id, deliveryDate: input.deliveryDate, providerRevision: snapshot.providerRevision }, undefined, scope)
           if (duplicate) throw rdnError(409, 'stale_version_or_duplicate')
-          const history = await findWithDecryption(em, RdnImportBatch,
-            { ...scope, sourceSeriesId: source.id, deliveryDate: input.deliveryDate }, undefined, scope)
-          // Lineage, not millisecond timestamps or random UUID order, identifies the current head.
-          const supersededIds = new Set(history.map((x) => x.supersedesBatchId).filter(Boolean))
-          const heads = history.filter((x) => !supersededIds.has(x.id))
+          const seriesDay = { ...scope, sourceSeriesId: source.id, deliveryDate: input.deliveryDate }
+          const superseded = em.createQueryBuilder(RdnImportBatch, 'revision')
+            .select('supersedesBatchId').where({ ...seriesDay, supersedesBatchId: { $ne: null } })
+          // Let the DB find the lineage head; two results suffice to reject a branch.
+          const heads = await findWithDecryption(em, RdnImportBatch,
+            { ...seriesDay, id: { $nin: superseded } }, { limit: 2 }, scope)
           if (heads.length > 1) throw rdnError(409, 'stale_version_or_duplicate')
           const previous = heads[0]
           if (previous) {
-            const oldPoints = await findWithDecryption(em, RdnImportPoint, { ...scope, batchId: previous.id }, undefined, scope)
+            const oldPoints = await findWithDecryption(em, RdnImportPoint,
+              { ...scope, batchId: previous.id }, { limit: 10_001 }, scope)
+            if (oldPoints.length > 10_000) throw rdnError(409, 'stale_version_or_duplicate')
             const currentByInterval = new Map(snapshot.points.map((x) => [x.intervalStartUtc, x]))
             if (oldPoints.some((x) => {
               const incoming = currentByInterval.get(x.intervalStartUtc.toISOString())

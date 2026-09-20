@@ -2,7 +2,7 @@
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { mkdir, writeFile, readFile, rm } from 'node:fs/promises'
+import { mkdir, writeFile, rm } from 'node:fs/promises'
 import { randomBytes } from 'node:crypto'
 import path from 'node:path'
 
@@ -14,15 +14,8 @@ try {
   await mkdir(lockPath)
 } catch (error) {
   if (error.code !== 'EEXIST') throw error
-  const owner = JSON.parse(await readFile(path.join(lockPath, 'owner.json'), 'utf8'))
-  try {
-    process.kill(owner.pid, 0)
-    throw new Error('An RDN test environment is already active in this worktree; stop it before starting another')
-  } catch (probe) {
-    if (probe.code !== 'ESRCH') throw probe
-    await rm(lockPath, { recursive: true })
-    await mkdir(lockPath)
-  }
+  // A second launcher must never delete a lock another contender may have just acquired.
+  throw new Error('An RDN test environment lock already exists in .mercato/rdn-test-provider.lock. Check owner.json and stop the owning run. Remove a stale lock only after confirming its environment is stopped.')
 }
 await writeFile(path.join(lockPath, 'owner.json'), JSON.stringify({ pid: process.pid }))
 const controls = new Map()
