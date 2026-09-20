@@ -6,13 +6,23 @@ import { z } from 'zod'
  * accepted from a payload.
  */
 
-/** A real calendar day: the string must survive a UTC round-trip unchanged, so `2026-02-30` is rejected. */
+/**
+ * `YYYY-MM-DD` that is also a real calendar day. A format-only regex accepts
+ * `2026-02-30` and `2026-02-29`, which would reach the import/run/evaluate
+ * contracts as a valid delivery date, so the calendar check belongs here — one
+ * shared date schema for the whole module.
+ */
 export const rdnIsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
   .refine((value) => {
-    const parsed = new Date(`${value}T00:00:00Z`)
-    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+    const [year, month, day] = value.split('-').map(Number)
+    const parsed = new Date(Date.UTC(year, month - 1, day))
+    return (
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+    )
   }, 'Expected an existing calendar date')
 
 /**

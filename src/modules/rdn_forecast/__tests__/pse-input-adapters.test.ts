@@ -1,9 +1,11 @@
 import { describe, expect, it } from '@jest/globals'
+import { loadProviderFixture } from './helpers/provider-fixtures.cjs'
 import {
   hourlyRecordToMtu,
   parseKseLoadRow,
   parsePk5lWpRow,
   PseInputRowError,
+  rdnSourceSeriesUnits,
 } from '../integrations/data-sync'
 
 const kseRow = {
@@ -119,6 +121,47 @@ describe('PSE input row adapters', () => {
   it('has no invented spring 02:00 MTU', () => {
     const mtus = dayMtu('2026-03-28T23:00:00.000Z', 23, '2026-03-29')
     expect(mtus.map((mtu) => localHour(mtu.intervalStartUtc))).not.toContain('02')
+  })
+
+  it('declares the unit per series in the adapter contract', () => {
+    expect(rdnSourceSeriesUnits).toEqual({
+      'kse-load': 'MW',
+      'pk5l-wp': 'MW',
+      'csdac-pln': 'PLN/MWh',
+    })
+    expect(parseKseLoadRow(kseRow).unit).toBe(rdnSourceSeriesUnits['kse-load'])
+    expect(parsePk5lWpRow(pkRow).unit).toBe(rdnSourceSeriesUnits['pk5l-wp'])
+  })
+
+  it('stamps MW on every kse-load point parsed from the recorded null-forecast fixture', () => {
+    const [page] = loadProviderFixture('loadNullForecast')
+    for (const row of page.value) {
+      const point = parseKseLoadRow(row)
+      expect(point.unit).toBe(rdnSourceSeriesUnits['kse-load'])
+      expect(point.loadForecast).toBeNull()
+      expect(point.loadActual).toBe(16383.22)
+    }
+  })
+
+  it('stamps MW on every pk5l-wp hour and all of its MTU from the recorded autumn fixture', () => {
+    const [page] = loadProviderFixture('windAutumn')
+    expect(page.value).toHaveLength(25)
+    for (const row of page.value) {
+      const hour = parsePk5lWpRow(row)
+      expect(hour.unit).toBe(rdnSourceSeriesUnits['pk5l-wp'])
+      expect(hourlyRecordToMtu(hour).map((mtu) => mtu.unit))
+        .toEqual([
+          rdnSourceSeriesUnits['pk5l-wp'],
+          rdnSourceSeriesUnits['pk5l-wp'],
+          rdnSourceSeriesUnits['pk5l-wp'],
+          rdnSourceSeriesUnits['pk5l-wp'],
+        ])
+    }
+  })
+
+  it('rejects a pk5l-wp hour whose unit is not the declared MW', () => {
+    const hour = parsePk5lWpRow(pkRow)
+    expect(() => hourlyRecordToMtu({ ...hour, unit: 'kW' as 'MW' })).toThrow(PseInputRowError)
   })
 
   it('rejects malformed timestamps, non-finite numbers and missing values instead of coercing them', () => {

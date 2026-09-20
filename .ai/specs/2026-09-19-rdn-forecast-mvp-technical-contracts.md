@@ -43,7 +43,7 @@ need calibration on a disjoint training window before Phase 2.
 | PSE source catalog and adapter | `dominikczerwinski-eng` / #6 A-B | `src/modules/rdn_forecast/integrations/pse.ts`, `data-sync.ts` | Provider response becomes a scoped, versioned snapshot; no direct UI writes |
 | Source, batch, point, quality, forecast, evaluation entities | `dominikczerwinski-eng` / #3 | `src/modules/rdn_forecast/data/entities.ts`, `validators.ts` | One owner; all records carry trusted tenant and organization scope |
 | Forecast method and evaluation | `worker:marek` (login `TBD`) / #7 | `src/modules/rdn_forecast/lib/forecast.ts`, `evaluation.ts` | Consumes immutable snapshots by ID; does not fetch PSE |
-| Panel and navigation | `worker:marek` (login `TBD`) / #8 | `src/modules/rdn_forecast/frontend/rdn-forecast/page.tsx`, `components/` | Uses API/command contracts; no direct ORM access |
+| Panel and navigation | `worker:grzegorz` / #34 | `src/modules/rdn_forecast/backend/rdn-forecast/page.tsx`, `components/` | Uses API/command contracts; no direct ORM access |
 | CI, generated registries, migration coordination | `worker:grzegorz` (login `TBD`) / #4, with `dominikczerwinski-eng` for #5's integration seam | repository configuration and generated outputs | Changes require the shared coordinator and review |
 
 The first row records the current assignee's scope, not ownership of #7 or #8.

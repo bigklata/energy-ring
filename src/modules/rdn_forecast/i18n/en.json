@@ -1,0 +1,22 @@
+{
+  "rdn_forecast.forecastTable.column.actualPrice": "Actual price",
+  "rdn_forecast.forecastTable.column.adjustment": "Correction",
+  "rdn_forecast.forecastTable.column.baselineD1": "Baseline D-1",
+  "rdn_forecast.forecastTable.column.baselineD7": "Baseline D-7",
+  "rdn_forecast.forecastTable.column.forecast": "Forecast",
+  "rdn_forecast.forecastTable.column.interval": "MTU (Europe/Warsaw)",
+  "rdn_forecast.forecastTable.meta.cutoff": "Cutoff",
+  "rdn_forecast.forecastTable.meta.methodVersion": "Method version",
+  "rdn_forecast.forecastTable.meta.sources": "Sources",
+  "rdn_forecast.forecastTable.meta.unit": "PLN/MWh",
+  "rdn_forecast.forecastTable.note.blocked.missing_required_input": "Blocked: required input missing",
+  "rdn_forecast.forecastTable.note.blocked.unknown": "Blocked",
+  "rdn_forecast.forecastTable.note.fallback.d1_only": "D-7 baseline missing — D-1 only",
+  "rdn_forecast.forecastTable.note.fallback.d7_only": "D-1 baseline missing — D-7 only",
+  "rdn_forecast.forecastTable.value.missing": "missing",
+  "rdn_forecast.nav.group": "Energy Ring",
+  "rdn_forecast.panel.description": "Review RDN forecast data and results.",
+  "rdn_forecast.panel.empty.description": "Forecast data will appear here after an import or run is available.",
+  "rdn_forecast.panel.empty.title": "No forecast data yet",
+  "rdn_forecast.panel.title": "RDN Forecast"
+}
