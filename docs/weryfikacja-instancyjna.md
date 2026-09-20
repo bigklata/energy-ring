@@ -11,8 +11,9 @@ Dowód składa się z dwóch części i obie są obowiązkowe:
 2. `yarn test:integration:ephemeral` — ile testów uruchomiono i ile przeszło.
 
 Wszystkie bloki są w `bash`, kopiujesz je po kolei w **jednej** sesji terminala
-(kroki 1–2 ustawiają zmienne używane w krokach 3–6). Zakładają katalog główny
-repo. Jeśli domyślną powłoką jest `zsh`, najpierw uruchom `bash`.
+(kroki 1–2b ustawiają zmienne i funkcję sprzątającą używane w krokach 3–6).
+Zakładają katalog główny repo. Jeśli domyślną powłoką jest `zsh`, najpierw
+uruchom `bash`.
 
 **Nie włączaj `set -e` / `set -u` w tej sesji.** Każdy blok sam sprawdza błędy
 i przy porażce wypisuje `STOP: …` zamiast iść dalej. `set -e` w interaktywnej
@@ -128,6 +129,53 @@ fi
 
 Potem powtórz krok 2 (użyje `VERIFY_BASE_URL`).
 
+### 2b. Sprzątanie awaryjne — wykonaj zaraz po kroku 2
+
+Definiuje `verify_cleanup` (jedyna implementacja sprzątania w tym runbooku —
+krok 6 ją wywołuje) i podpina ją pod wyjście z powłoki. Dzięki temu baza
+`om_verify_*` i kontener z 2a znikają także wtedy, gdy przerwiesz przebieg
+i zamkniesz terminal przed krokiem 6:
+
+```bash
+verify_cleanup() {
+  if [ -n "${VERIFY_DB:-}" ]; then
+    VERIFY_DB="$VERIFY_DB" env -u DATABASE_URL node --env-file=.env -e '
+const { Client } = require("pg");
+const db = process.env.VERIFY_DB;
+if (!/^om_verify_[0-9]{14}$/.test(db)) { console.error("odmowa: " + db + " nie jest baza z tego runbooka"); process.exit(1); }
+(async () => {
+  const c = new Client({ connectionString: process.env.VERIFY_BASE_URL || process.env.DATABASE_URL });
+  await c.connect();
+  await c.query(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
+  const r = await c.query("select count(*)::int n from pg_database where datname like $1", ["om_verify_%"]);
+  console.log("pozostale bazy om_verify_*:", r.rows[0].n);
+  await c.end();
+})().catch((e) => { console.error(e.message); process.exit(1); });
+' || echo "UWAGA: nie udało się usunąć $VERIFY_DB — usuń ją ręcznie" >&2
+  fi
+  if [ -n "${VERIFY_PG_CONTAINER:-}" ]; then
+    docker rm -f "$VERIFY_PG_CONTAINER" >/dev/null 2>&1 \
+      || echo "UWAGA: nie udało się usunąć kontenera $VERIFY_PG_CONTAINER" >&2
+    unset VERIFY_PG_CONTAINER VERIFY_BASE_URL VERIFY_PG_PASSWORD
+  fi
+  return 0
+}
+trap verify_cleanup EXIT
+echo "sprzątanie podpięte pod wyjście z powłoki"
+```
+
+- Trap jest podpięty **tylko** pod `EXIT`, nie pod `INT`. `Ctrl+C` przerywa
+  długą migrację lub testy i zostawia bazę, żeby dało się obejrzeć stan; bazę
+  usuwa dopiero zamknięcie powłoki albo krok 6.
+- `verify_cleanup` jest idempotentne (`DROP DATABASE IF EXISTS`, `docker rm -f`
+  po cichu), więc krok 6 i trap mogą się wykonać po sobie.
+- Jeśli uruchomiłeś 2a **po** 2b, nic nie poprawiaj: funkcja czyta
+  `VERIFY_PG_CONTAINER` dopiero w momencie wywołania.
+- To zabezpieczenie „best effort”: przy `kill -9` powłoki albo zamknięciu okna
+  terminala bez SIGHUP trap się nie wykona. Sprzątanie z kroku 6 pozostaje
+  właściwą ścieżką, a pozostałości znajdziesz wzorcem `om_verify_%` i
+  `docker ps -a --filter name=om-verify-pg-`.
+
 ## 3. Migracje na czystej bazie
 
 ```bash
@@ -242,29 +290,16 @@ Running 1 test using 1 worker
 
 ## 6. Sprzątanie — zawsze, także po porażce w krokach 2–5
 
-Łączy się z tym samym serwerem co krok 2 (`VERIFY_BASE_URL` albo `.env`,
-bez odziedziczonego `DATABASE_URL`) i usuwa wyłącznie bazę `om_verify_<czas>`
-utworzoną w tej sesji oraz — jeśli był krok 2a — wyłącznie jego kontener:
+Wywołuje `verify_cleanup` z kroku 2b. Funkcja łączy się z tym samym serwerem
+co krok 2 (`VERIFY_BASE_URL` albo `.env`, bez odziedziczonego `DATABASE_URL`)
+i usuwa wyłącznie bazę `om_verify_<czas>` utworzoną w tej sesji oraz — jeśli
+był krok 2a — wyłącznie jego kontener:
 
 ```bash
-if [ -n "${VERIFY_DB:-}" ]; then
-  VERIFY_DB="$VERIFY_DB" env -u DATABASE_URL node --env-file=.env -e '
-const { Client } = require("pg");
-const db = process.env.VERIFY_DB;
-if (!/^om_verify_[0-9]{14}$/.test(db)) { console.error("odmowa: " + db + " nie jest baza z tego runbooka"); process.exit(1); }
-(async () => {
-  const c = new Client({ connectionString: process.env.VERIFY_BASE_URL || process.env.DATABASE_URL });
-  await c.connect();
-  await c.query(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`);
-  const r = await c.query("select count(*)::int n from pg_database where datname like $1", ["om_verify_%"]);
-  console.log("pozostale bazy om_verify_*:", r.rows[0].n);
-  await c.end();
-})().catch((e) => { console.error(e.message); process.exit(1); });
-'
-fi
-if [ -n "${VERIFY_PG_CONTAINER:-}" ]; then
-  docker rm -f "$VERIFY_PG_CONTAINER"
-  unset VERIFY_PG_CONTAINER VERIFY_BASE_URL VERIFY_PG_PASSWORD
+if declare -f verify_cleanup >/dev/null; then
+  verify_cleanup
+else
+  echo "STOP: brak verify_cleanup — wykonaj blok z kroku 2b w tej samej sesji" >&2
 fi
 docker ps --format '{{.Names}} {{.Image}}'   # nie powinno być kontenerów po ephemeral
 ```
@@ -283,7 +318,7 @@ nie usuwaj — runbook sprząta tylko to, co sam utworzył.
 | `Container runtime is unavailable` / `Docker CLI is not available` | brak Dockera | Uruchom Docker (na macOS np. `colima start`) i powtórz krok 4. |
 | `CREATE DATABASE` → `permission denied` | użytkownik z `DATABASE_URL` nie ma `CREATEDB` | Krok 2a (osobny Postgres na `127.0.0.1`), potem ponownie krok 2. Krok 6 usuwa tylko ten kontener. |
 | `STOP: …` z kroku 1–3 | poprzednia komenda zawiodła; zmienne celowo wyczyszczone | Napraw przyczynę (komunikat nad `STOP`) i powtórz od kroku, który zawiódł. Nie ustawiaj `VERIFY_URL` ręcznie. |
-| terminal zamknął się w trakcie | włączone `set -e` (np. z wcześniejszej wersji runbooka) | Nowa sesja, `set +eu`, `VERIFY_DB=om_verify_<czas>` (nazwa z wcześniejszego wydruku) i krok 6; kontener z kroku 2a znajdziesz przez `docker ps -a --filter name=om-verify-pg-`. Potem od kroku 1. |
+| terminal zamknął się w trakcie | włączone `set -e` (np. z wcześniejszej wersji runbooka) | Trap z kroku 2b zwykle posprząta sam — sprawdź to. Jeśli nie (np. `kill -9`): nowa sesja, `set +eu`, `VERIFY_DB=om_verify_<czas>` (nazwa z wcześniejszego wydruku), blok z kroku 2b i krok 6; kontener z kroku 2a znajdziesz przez `docker ps -a --filter name=om-verify-pg-`. Potem od kroku 1. |
 | migracja nie wchodzi na czystej bazie | błąd w SQL albo zależność od stanu, którego czysta baza nie ma | Popraw encję, wygeneruj migrację ponownie (`yarn db:generate`), przejrzyj SQL. Nigdy nie edytuj migracji już scalonej do `main` — dodaj nową. Jeśli `db:generate` wygenerował pliki dla innych modułów, usuń je. |
 | `<modul aplikacji>: no pending migrations` w kroku 3 | migracje poszły na starą bazę (np. `DATABASE_URL` nie został podmieniony) | Dowód nieważny — powtórz kroki 2–3 w tej samej sesji terminala. |
 | `Build cache valid ... Skipping build pipeline` w logu | uruchomienie bez `--force-rebuild` | Powtórz krok 4 z flagami. |
