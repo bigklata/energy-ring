@@ -139,7 +139,7 @@ i zamkniesz terminal przed krokiem 6:
 ```bash
 verify_cleanup() {
   if [ -n "${VERIFY_DB:-}" ]; then
-    VERIFY_DB="$VERIFY_DB" env -u DATABASE_URL node --env-file=.env -e '
+    if VERIFY_DB="$VERIFY_DB" env -u DATABASE_URL node --env-file=.env -e '
 const { Client } = require("pg");
 const db = process.env.VERIFY_DB;
 if (!/^om_verify_[0-9]{14}$/.test(db)) { console.error("odmowa: " + db + " nie jest baza z tego runbooka"); process.exit(1); }
@@ -151,12 +151,21 @@ if (!/^om_verify_[0-9]{14}$/.test(db)) { console.error("odmowa: " + db + " nie j
   console.log("pozostale bazy om_verify_*:", r.rows[0].n);
   await c.end();
 })().catch((e) => { console.error(e.message); process.exit(1); });
-' || echo "UWAGA: nie udało się usunąć $VERIFY_DB — usuń ją ręcznie" >&2
+'
+    then
+      unset VERIFY_DB VERIFY_URL
+    else
+      echo "UWAGA: nie udało się usunąć $VERIFY_DB — usuń ją ręcznie" >&2
+    fi
   fi
   if [ -n "${VERIFY_PG_CONTAINER:-}" ]; then
-    docker rm -f "$VERIFY_PG_CONTAINER" >/dev/null 2>&1 \
-      || echo "UWAGA: nie udało się usunąć kontenera $VERIFY_PG_CONTAINER" >&2
-    unset VERIFY_PG_CONTAINER VERIFY_BASE_URL VERIFY_PG_PASSWORD
+    if docker rm -f "$VERIFY_PG_CONTAINER" >/dev/null 2>&1; then
+      # Usunięcie własnego kontenera usuwa także bazę, nawet po błędzie DROP.
+      unset VERIFY_DB VERIFY_URL VERIFY_PG_CONTAINER VERIFY_BASE_URL VERIFY_PG_PASSWORD
+    else
+      # Zachowaj cel przy błędzie: kolejna próba nie może przejść na .env.
+      echo "UWAGA: nie udało się usunąć kontenera $VERIFY_PG_CONTAINER" >&2
+    fi
   fi
   return 0
 }
@@ -167,8 +176,11 @@ echo "sprzątanie podpięte pod wyjście z powłoki"
 - Trap jest podpięty **tylko** pod `EXIT`, nie pod `INT`. `Ctrl+C` przerywa
   długą migrację lub testy i zostawia bazę, żeby dało się obejrzeć stan; bazę
   usuwa dopiero zamknięcie powłoki albo krok 6.
-- `verify_cleanup` jest idempotentne (`DROP DATABASE IF EXISTS`, `docker rm -f`
-  po cichu), więc krok 6 i trap mogą się wykonać po sobie.
+- Po skutecznym sprzątaniu funkcja usuwa zmienne wskazujące usunięte zasoby.
+  Krok 6 i trap mogą wykonać się po sobie bez ponownego połączenia do bazy.
+  Przy błędzie zachowuje tożsamość celu do ponowienia; nie przełącza się na
+  serwer z `.env` po usunięciu własnego kontenera. Regresję sprawdzisz bez bazy:
+  `node scripts/test-instance-runbook-cleanup.mjs`.
 - Jeśli uruchomiłeś 2a **po** 2b, nic nie poprawiaj: funkcja czyta
   `VERIFY_PG_CONTAINER` dopiero w momencie wywołania.
 - To zabezpieczenie „best effort”: przy `kill -9` powłoki albo zamknięciu okna
@@ -200,7 +212,10 @@ nadpisuje (CLI ładuje `.env` przez `dotenv` bez `override`). Bez poprawnego
 z `.env` ani w żadną inną.
 
 Na czystej bazie **każdy** moduł z migracjami wypisuje `<modul>: N migration(s)
-applied`, w tym moduł z Twojego Issue (np. `rdn_forecast: 1 migration applied`).
+applied`, w tym moduł z Twojego Issue, jeśli ma migracje
+(np. `rdn_forecast: 1 migration applied`). Issue dokumentacyjno-testowe, takie
+jak #41, nie tworzy własnego modułu z migracjami: nadal wymaga pełnej migracji
+czystej bazy (`N > 0`) i wykonania własnych commitowanych testów aplikacji.
 `no pending migrations` przy module aplikacji oznacza, że baza nie była czysta.
 
 ## 4. Testy integracyjne na efemerycznej instancji
@@ -254,6 +269,9 @@ teardownie i nie korzysta z danych zasianych.
 
 Wklej całość `/tmp/verify-evidence.txt` do PR-a w blok ```` ```text ````,
 a SHA również w pole „SHA dowodu” szablonu PR.
+Zachowaj dosłowny wynik bloku. Dodatkowe liczniki z raportu Playwright,
+wyniki cleanup i kontrole operatora opisz osobno, ze wskazaniem źródła;
+nie dopisuj ich do cytowanego wyniku kroku 5.
 
 ### Które linie są dowodem
 
@@ -262,7 +280,7 @@ a SHA również w pole „SHA dowodu” szablonu PR.
 | `SHA dowodu: …` | wersja kodu | równa ostatniemu commitowi PR-a |
 | `db:migrate … exit=0` | migracje weszły bez błędu | `exit=0` |
 | `modules=M, migrations applied=N` | baza była czysta i dostała cały schemat | `N > 0`; `M` = liczba modułów z migracjami |
-| `<modul>: N migration(s) applied` | migracja z Twojego Issue weszła (wypisywane są tylko moduły z `src/modules`) | obecna dla modułu z Issue |
+| `<modul>: N migration(s) applied` | migracje modułu z Twojego Issue weszły (wypisywane są tylko moduły z `src/modules`) | obecna, jeśli moduł z Issue ma migracje; dla #41 bez własnego modułu obowiązuje powyższy licznik całego schematu |
 | `test:integration:ephemeral — exit=0` | runner zakończył się sukcesem | `exit=0` |
 | `Running T tests using …` | ile testów uruchomiono | `T ≥ 1`, w tym test z Twojego Issue |
 | `P passed (…)` | ile przeszło | `P = T`; brak linii `failed`/`flaky`/`interrupted`/`did not run` |
