@@ -1,6 +1,6 @@
 # Persistent target import — issue #26
 
-Status: in-progress
+Status: complete
 Source doc: .ai/specs/2026-09-19-rdn-forecast-mvp-technical-contracts.md
 Issue: #26. Foundation: #53, verified SHA 205e9bf297c2159eb93bb29faaea4249b47b633f.
 
@@ -56,7 +56,26 @@ No schema migration. #53 must be integrated before this feature; the draft PR ex
 
 ### Phase 1: Atomic import and observable API
 
-- [ ] 1.1 Implement pure normalization/revision identity and the scoped transactional import command, with targeted unit tests.
-- [ ] 1.2 Wire provider DI, real scoped reads and the batch detail route; preserve guards and error contracts.
-- [ ] 1.3 Exercise the live API, add self-contained integration tests for persistence, retry, races, rollback and tenant/organization isolation.
-- [ ] 1.4 Run all six gates and clean-DB/native ephemeral proof on a committed SHA; publish evidence and resolve review findings.
+- [x] 1.1 Implement pure normalization/revision identity and the scoped transactional import command, with targeted unit tests. — 3f1ec96a02cf1f7b44d079706ee173f51de48c5a
+- [x] 1.2 Wire provider DI, real scoped reads and the batch detail route; preserve guards and error contracts. — 3f1ec96a02cf1f7b44d079706ee173f51de48c5a
+- [x] 1.3 Exercise the live API, add self-contained integration tests for persistence, retry, races, rollback and tenant/organization isolation. — 3f1ec96a02cf1f7b44d079706ee173f51de48c5a
+- [x] 1.4 Run all six gates and clean-DB/native ephemeral proof on a committed SHA; publish evidence and resolve review findings. — 3f1ec96a02cf1f7b44d079706ee173f51de48c5a
+
+## Verification and handoff — 2026-09-20
+
+Code SHA: `3f1ec96a02cf1f7b44d079706ee173f51de48c5a`. The final tracking-plan commit changes documentation only; every runtime result below belongs to this code SHA. PR: #67, stacked on #53 (`205e9bf`). Implementation complete; human code review, QA sign-off and dependency integration are still pending. No merge was performed.
+
+- All six configured gates passed in order: generate, typecheck, lint, ds:check, test, build. Jest executed **177/177 tests in 15 suites**; the nine new unit cases cover revision identity, acquisition statistics, date boundaries and provider limits. Lint has eight existing warnings and no errors.
+- An owned, initially empty PostgreSQL 17 database applied **296 migrations across 46 modules**, including two RDN migrations and seven RDN tables. The schema script passed **18 assertions**; its proof DB and container were removed. The CLI still warns about loading upstream reindex declarations; this proof does not certify search reindexing.
+- Native `yarn test:integration:ephemeral --force-rebuild --no-reuse-env` on a separate disposable PostgreSQL 16/application instance passed **17/17 tests**, zero skipped, unexpected or flaky results (2026-09-20 11:16:57–11:19:12 UTC). Eight new live-API tests cover persisted values, point pagination, retry/conflicts, three revisions with tied timestamps, stale/branched history denial, both key races, provider-page failure, point-phase DB rollback, two tenants/three organizations, empty organization grants and denied/wildcard ACLs.
+- The transport fixture intercepts only outbound PSE calls. Authentication, guarded command dispatch, transaction/constraints and API reads are real. A second launcher was checked with both a live and a stale owner: both refused startup without deleting the existing lock or writing provider state.
+- Post-review fix `3f1ec96`: use a scoped DB subquery and a two-head limit instead of loading all revision history; bound previous-point reads; reject existing launcher locks instead of racing to delete them. Regression tests passed on this commit. No entities, migrations, installed modules or UI were edited.
+- Own ephemeral resources were stopped/removed. Shared stage1 was not redeployed or reset; dev stayed stopped. The native email-capture artifact was moved out of Git into the private runtime evidence directory.
+
+### Next owner
+
+Review #67 and its proof with `dominikczerwinski-eng` / `funnydonut`. This was Codex's authoring/self-review pass; it is not independent team approval. GitHub cannot accept self-approval from the PR author. Keep the PR in review with `needs-qa`; do not infer approval from these tests.
+
+First merge #53 following its own review; then integrate the current default branch into #67, retarget it to that branch and recheck its combined state before merge. #26 remains open until delivery; #19 still depends on downstream durable evaluation (#32) and broader API/application coverage (#39). Quality acceptance is #27; this import records `received`, not `accepted`.
+
+Private evidence/handoff: `~/work/data/private/workstation-runtime/projects/energy-ring-issue26-import/`. Recurring supervision remains paused; this was one authorized task run.
