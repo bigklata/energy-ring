@@ -31,7 +31,7 @@ PR: #66
 ### Phase 1: Repair and regression proof
 
 - [x] 1.1 Preserve author work and reproduce failures — de95346 (targeted Jest: 1 PASS / 17 FAIL; log and JSON retained outside Git)
-- [ ] 1.2 Repair baseline/calendar behavior and independent oracles
+- [x] 1.2 Repair baseline/calendar behavior and independent oracles — f1526fd plus the review fix below
 
 ### Phase 2: Verify and deliver
 
@@ -41,3 +41,7 @@ PR: #66
 ## Regression evidence
 
 The corrected assertions and fixtures fail against original production code `de95346`: 26 PASS / 21 FAIL / 47. The repaired implementation passes 47/47. The initial unmodified code and tests were 1 PASS / 17 FAIL / 18. All executions were real Jest runs; structured reports and logs are in the task runtime directory outside Git.
+
+## Independent review follow-up
+
+The reviewer found that a missing first autumn occurrence incorrectly selected the second available row. Two new regressions (D-1 and D-7) fail on f1526fd, then pass with calendar-derived first-occurrence selection. The first full gate reached five PASS commands; its build was explicitly cancelled (exit 143) because this finding invalidated that version. That preliminary run started before the repair commit and is not final commit evidence. A new complete gate runs only after the review fix is committed.

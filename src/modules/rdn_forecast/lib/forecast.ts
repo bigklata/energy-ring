@@ -228,7 +228,7 @@ type BaselineLookup = Map<string, IndexedPoint[]>
 
 function buildLookup(points: IndexedPoint[]): BaselineLookup {
   const byLabel: BaselineLookup = new Map()
-  // indexPoints is already sorted by UTC; the first point is the fixed DST tie-break.
+  // indexPoints is already sorted by UTC; keep both autumn occurrences for validation.
   // Normal baseline days may contain labels absent from a spring delivery day.
   for (const point of points) {
     const group = byLabel.get(point.localLabel) ?? []
@@ -243,9 +243,18 @@ function shiftCalendarDate(date: Date, days: number): string {
   return new Date(date.getTime() + days * 86_400_000).toISOString().slice(0, 10)
 }
 
-function labelsOfDay(dateIso: string, timeZone: string): Set<string> {
+type BaselineCalendar = Map<string, number[]>
+
+function calendarOfDay(dateIso: string, timeZone: string): BaselineCalendar {
   const localParts = makeLocalPartsFormatter(timeZone)
-  return new Set(dayUtcStarts(dateIso, timeZone).map((start) => localParts(start).label))
+  const calendar: BaselineCalendar = new Map()
+  for (const start of dayUtcStarts(dateIso, timeZone)) {
+    const label = localParts(start).label
+    const starts = calendar.get(label) ?? []
+    starts.push(start)
+    calendar.set(label, starts)
+  }
+  return calendar
 }
 
 function missingReason(point: IndexedPoint | undefined): MissingBaselineReason | null {
@@ -253,17 +262,17 @@ function missingReason(point: IndexedPoint | undefined): MissingBaselineReason |
   return 'baseline_day_null_value'
 }
 
-function pickBaseline(lookup: BaselineLookup, label: string): {
+function pickBaseline(lookup: BaselineLookup, calendar: BaselineCalendar, label: string): {
   point: IndexedPoint | undefined
   tieBroken: boolean
 } {
+  const expectedStarts = calendar.get(label) ?? []
   const group = lookup.get(label) ?? []
-  if (group.length === 0) return { point: undefined, tieBroken: false }
-  if (group.length === 1) return { point: group[0], tieBroken: false }
-  // §4 rule 3: an autumn baseline day repeats the local label twice.
-  // Tie-break to the chronologically first (lower UTC start) occurrence,
-  // never an average and never the second occurrence.
-  return { point: group[0], tieBroken: true }
+  // §4 fixes the comparator to the calendar's first UTC occurrence, not the
+  // first available input row. A missing first occurrence must stay missing,
+  // even when a later (second) price is available; null is likewise preserved.
+  const point = group.find((candidate) => candidate.startMs === expectedStarts[0])
+  return { point, tieBroken: point !== undefined && expectedStarts.length > 1 }
 }
 
 /**
@@ -308,14 +317,14 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
 
   const allLabels = Array.from({ length: 96 }, (_, i) => `${String(Math.floor(i / 4)).padStart(2, '0')}:${String((i % 4) * 15).padStart(2, '0')}`)
   const absentLocalLabels = allLabels.filter((label) => !seenLabels.has(label))
-  const d1CalendarLabels = labelsOfDay(shiftCalendarDate(deliveryDate, -1), timeZone)
-  const d7CalendarLabels = labelsOfDay(shiftCalendarDate(deliveryDate, -7), timeZone)
+  const d1Calendar = calendarOfDay(shiftCalendarDate(deliveryDate, -1), timeZone)
+  const d7Calendar = calendarOfDay(shiftCalendarDate(deliveryDate, -7), timeZone)
   const tieBrokenLabels = new Set<string>()
   const dstFallbackLabels = new Set<string>()
 
   const points: BaselinePointResult[] = target.map((point) => {
-    const d1Pick = pickBaseline(d1Lookup, point.localLabel)
-    const d7Pick = pickBaseline(d7Lookup, point.localLabel)
+    const d1Pick = pickBaseline(d1Lookup, d1Calendar, point.localLabel)
+    const d7Pick = pickBaseline(d7Lookup, d7Calendar, point.localLabel)
     if (d1Pick.tieBroken) tieBrokenLabels.add(point.localLabel)
     if (d7Pick.tieBroken) tieBrokenLabels.add(point.localLabel)
 
@@ -332,7 +341,7 @@ export function computeBaselines(input: ComputeBaselinesInput): BaselineComputeR
       blockedCode = 'blocked_forecast'
     } else if (d1Available !== d7Available) {
       baselineFallback = d1Available ? 'd1_only' : 'd7_only'
-      if (!d1CalendarLabels.has(point.localLabel) || !d7CalendarLabels.has(point.localLabel)) {
+      if (!d1Calendar.has(point.localLabel) || !d7Calendar.has(point.localLabel)) {
         dstFallbackLabels.add(point.localLabel)
       }
     }

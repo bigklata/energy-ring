@@ -144,6 +144,23 @@ describe('computeBaselines — method baseline-correction.v1 §§3–4', () => {
     })
   })
 
+  it.each([
+    ['2026-10-26', 'baselineD1Points', 'baselineD1', 'missingD1Reason', 'd7_only'],
+    ['2026-11-01', 'baselineD7Points', 'baselineD7', 'missingD7Reason', 'd1_only'],
+  ] as const)('never borrows the second autumn occurrence when the first is absent: %s / %s', (date, field, priceField, reasonField, fallback) => {
+    const input = inputFor(date)
+    // Calendar oracle: Warsaw 02:00's first start is 00:00Z, second is 01:00Z.
+    const remaining = input[field].filter((p) => p.intervalStartUtc !== '2026-10-25T00:00:00.000Z')
+    expect(byLabel(remaining, '02:00')[0].intervalStartUtc).toBe('2026-10-25T01:00:00.000Z')
+    const result = computeBaselines({ ...input, [field]: remaining })
+    expect(byLabel(result.points, '02:00')[0]).toMatchObject({
+      [priceField]: null, [reasonField]: 'baseline_day_missing_local_label',
+      baselineFallback: fallback, blocked: false,
+    })
+    expect(result.dstFallbackLabels).toEqual([]) // Missing data, not an absent local hour.
+    expect(byLabel(result.points, '02:15')[0].baselineFallback).toBeNull()
+  })
+
   it('fixture rule 4: both autumn delivery occurrences use the same ordinary-day baselines', () => {
     const oracle = fixtureCase('autumn-delivery-day')
     const input = inputFor(oracle.deliveryDate)
