@@ -45,6 +45,20 @@ export type RdnImportPointContext = Pick<
   'batchId' | 'sourceSeriesId' | 'providerRevision'
 >
 
+/**
+ * Unit per series, explicit at the adapter boundary (issue #25). `pk5l-wp`
+ * `TBD(#6A)` is resolved to MW by PSE's official field map and report
+ * description; `kse-load` gross load is MW per the source catalog.
+ */
+export const rdnSourceSeriesUnits = {
+  'kse-load': 'MW',
+  'pk5l-wp': 'MW',
+  'csdac-pln': 'PLN/MWh',
+} as const satisfies Record<string, 'MW' | 'PLN/MWh'>
+
+export type RdnSourceEndpoint = keyof typeof rdnSourceSeriesUnits
+export type RdnSeriesUnit = (typeof rdnSourceSeriesUnits)[RdnSourceEndpoint]
+
 export class PseInputRowError extends Error {
   constructor(field: string) {
     super(`Invalid PSE input row: ${field}`)
@@ -214,7 +228,7 @@ export function hourlyRecordToMtu(hour: Pk5lWpHour): Pk5lWpMtu[] {
   if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs - startMs !== 60 * 60_000 || startMs % (60 * 60_000) !== 0) {
     throw new PseInputRowError('hour interval')
   }
-  if (hour.unit !== 'MW') throw new PseInputRowError('unit')
+  if (hour.unit !== rdnSourceSeriesUnits['pk5l-wp']) throw new PseInputRowError('unit')
   matchingBusinessDate(hour.businessDate, hour.hourStartUtc)
   return Array.from({ length: 4 }, (_, index) => ({
     businessDate: hour.businessDate,
