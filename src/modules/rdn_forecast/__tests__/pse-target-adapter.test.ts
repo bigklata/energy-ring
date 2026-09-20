@@ -1,5 +1,9 @@
 import { describe, expect, it } from '@jest/globals'
-import { parseCsdacPlnRow, PseInputRowError } from '../integrations/data-sync'
+import {
+  mapCsdacPlnTargetPoint,
+  parseCsdacPlnRow,
+  PseInputRowError,
+} from '../integrations/data-sync'
 
 const fetchedAtUtc = '2026-09-21T09:15:00.000Z'
 const ordinaryRow = {
@@ -29,6 +33,38 @@ describe('csdac-pln target row adapter', () => {
   it('preserves null and zero as distinct values', () => {
     expect(parseCsdacPlnRow({ ...ordinaryRow, csdac_pln: null }, fetchedAtUtc).value).toBeNull()
     expect(parseCsdacPlnRow({ ...ordinaryRow, csdac_pln: 0 }, fetchedAtUtc).value).toBe(0)
+  })
+
+  it('maps the parsed target to an import point while preserving value and timestamps', () => {
+    const point = parseCsdacPlnRow(ordinaryRow, fetchedAtUtc)
+    expect(mapCsdacPlnTargetPoint(point, {
+      batchId: '11111111-1111-4111-8111-111111111111',
+      sourceSeriesId: '22222222-2222-4222-8222-222222222222',
+      providerRevision: 'publication:2026-09-20T12:01:02.003Z',
+    })).toEqual({
+      batchId: '11111111-1111-4111-8111-111111111111',
+      sourceSeriesId: '22222222-2222-4222-8222-222222222222',
+      intervalStartUtc: new Date('2026-09-20T22:00:00.000Z'),
+      intervalEndUtc: new Date('2026-09-20T22:15:00.000Z'),
+      localDate: '2026-09-21',
+      localLabel: '00:00',
+      value: '-42.25',
+      unit: 'PLN/MWh',
+      publicationTsUtc: new Date('2026-09-20T12:01:02.003Z'),
+      fetchedAtUtc: new Date(fetchedAtUtc),
+      providerKey: 'pse:csdac-pln:2026-09-20T22:00:00.000Z:2026-09-20T12:01:02.003Z',
+      providerRevision: 'publication:2026-09-20T12:01:02.003Z',
+      rejectionCodes: [],
+    })
+  })
+
+  it('maps a missing price to null instead of zero', () => {
+    const point = parseCsdacPlnRow({ ...ordinaryRow, csdac_pln: null }, fetchedAtUtc)
+    expect(mapCsdacPlnTargetPoint(point, {
+      batchId: '11111111-1111-4111-8111-111111111111',
+      sourceSeriesId: '22222222-2222-4222-8222-222222222222',
+      providerRevision: 'r1',
+    }).value).toBeNull()
   })
 
   it('uses each row publication and the explicit acquisition time in its identity and point', () => {
