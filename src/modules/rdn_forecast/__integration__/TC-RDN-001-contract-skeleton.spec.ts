@@ -106,15 +106,11 @@ test.describe('TC-RDN-001: rdn_forecast contract skeleton', () => {
       expect(sources.status()).toBe(200)
       const sourcesBody = await readJsonSafe<ListBody>(sources)
       expect(sourcesBody?.page).toEqual({ limit: 50, nextCursor: null })
-      expect(sourcesBody?.items?.[0]).toMatchObject({ id: FIXTURE_SOURCE_ID, role: 'target', unit: 'PLN/MWh', active: true })
-
+      expect(Array.isArray(sourcesBody?.items)).toBe(true)
+      expect(sourcesBody?.items?.some((x) => x.id === FIXTURE_SOURCE_ID)).toBe(false)
       const batches = await readJsonSafe<ListBody>(await apiRequest(request, 'GET', `${BASE}/batches`, { token: fixture.token }))
-      expect(batches?.items?.[0]).toMatchObject({
-        id: FIXTURE_BATCH_ID,
-        sourceSeriesId: FIXTURE_SOURCE_ID,
-        status: 'accepted',
-        qualitySummary: { expectedCount: 96, acceptedCount: 96, rejectionCodes: [] },
-      })
+      expect(Array.isArray(batches?.items)).toBe(true)
+      // Actual import/source records are created and asserted by TC-RDN-003; these reads no longer return fixtures.
 
       const runs = await readJsonSafe<ListBody>(await apiRequest(request, 'GET', `${BASE}/runs`, { token: fixture.token }))
       expect(runs?.items?.[0]).toMatchObject({ id: FIXTURE_RUN_ID, mode: 'replay', methodVersion: 'baseline-correction.v1' })
@@ -173,10 +169,9 @@ test.describe('TC-RDN-001: rdn_forecast contract skeleton', () => {
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
       const imported = await apiRequest(request, 'POST', `${BASE}/batches`, { token, data: validImport })
-      expect(imported.status()).toBe(202)
-      const importBody = await readJsonSafe<{ batchId?: string; status?: string }>(imported)
-      expect(importBody?.status).toBe('received')
-      expect(importBody?.batchId).toMatch(uuid)
+      // The old constant is a fixture ID, not a persisted scoped source.
+      expect(imported.status()).toBe(404)
+      expect((await readJsonSafe<ErrorBody>(imported))?.code).toBe('scoped_not_found')
 
       const run = await apiRequest(request, 'POST', `${BASE}/runs`, { token, data: validRun })
       expect(run.status()).toBe(202)

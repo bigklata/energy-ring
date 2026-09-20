@@ -1,6 +1,6 @@
 import type { OpenApiRouteDoc } from '@open-mercato/shared/lib/openapi'
-import { dispatchRdnCommand, listResponse, parseQuery, resolveRdnRequestContext, withRdnErrors } from '../context'
-import { rdnFixtureBatches } from '../fixtures'
+import { dispatchRdnCommand, parseQuery, resolveRdnRequestContext, withRdnErrors } from '../context'
+import { listPersisted } from '../persisted'
 import {
   rdnBatchItemSchema,
   rdnCommandErrors,
@@ -18,9 +18,9 @@ export const metadata = {
 
 export async function GET(request: Request): Promise<Response> {
   return withRdnErrors(request, async () => {
-    await resolveRdnRequestContext(request)
+    const ctx = await resolveRdnRequestContext(request)
     const query = parseQuery(request, rdnListQuerySchema)
-    return listResponse(rdnFixtureBatches, query.limit)
+    return listPersisted(ctx, 'batches', query)
   })
 }
 
@@ -40,7 +40,7 @@ export const openApi: OpenApiRouteDoc = {
   methods: {
     GET: {
       summary: 'List import batches',
-      description: 'Contract stub (#20): serves the committed contract fixture, not tenant data.',
+      description: 'Reads persisted records in the authenticated tenant and organization.',
       tags: [rdnForecastTag],
       query: rdnListQuerySchema,
       responses: [{ status: 200, description: 'Import batch page.', schema: rdnListResponseSchema(rdnBatchItemSchema) }],
@@ -48,7 +48,7 @@ export const openApi: OpenApiRouteDoc = {
     },
     POST: {
       summary: 'Start an import (rdn_forecast.import)',
-      description: 'Contract stub (#20): validates and accepts the request without persisting a batch.',
+      description: 'Atomically acquires a PSE target snapshot and its points. A received batch is not yet quality-accepted.',
       tags: [rdnForecastTag],
       requestBody: { schema: rdnImportCommandSchema },
       responses: [{ status: 202, description: 'Import accepted.', schema: rdnImportAcceptedSchema }],

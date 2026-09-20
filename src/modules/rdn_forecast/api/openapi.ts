@@ -37,7 +37,7 @@ export function rdnListResponseSchema<T extends ZodTypeAny>(item: T) {
   return z.object({
     items: z.array(item),
     page: z.object({ limit: z.number().int(), nextCursor: z.string().nullable() }),
-    meta: z.object({ source: z.literal('fixture') }),
+    meta: z.object({ source: z.enum(['fixture', 'database']) }),
   })
 }
 
@@ -105,4 +105,6 @@ export const rdnReadErrors: OpenApiResponseDoc[] = [
 export const rdnCommandErrors: OpenApiResponseDoc[] = [
   ...rdnReadErrors,
   { status: 404, description: 'scoped_not_found', schema: rdnErrorSchema },
+  { status: 409, description: 'stale_version_or_duplicate', schema: rdnErrorSchema },
+  { status: 503, description: 'provider_unavailable', schema: rdnErrorSchema },
 ]
